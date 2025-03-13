@@ -140,10 +140,27 @@ class BerrySupplyChainClient {
         throw new Error(errorMessage);
       }
 
-      return await response.json();
+      const responseData = await response.json();
+
+      // Normalize response format
+      if (responseData.result) {
+        // Add success flag if needed
+        if (
+          typeof responseData.result === "object" &&
+          !responseData.result.success
+        ) {
+          responseData.result.success = responseData.status === "success";
+        }
+        return responseData.result;
+      }
+
+      return responseData;
     } catch (error) {
       console.error(`Error calling ${connection}.${action}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
@@ -153,52 +170,143 @@ class BerrySupplyChainClient {
     temperature: number,
     location: string
   ): Promise<any> {
-    return this.callConnectionAction("sonic", "monitor-berry-temperature", {
-      batch_id: parseInt(batchId),
-      temperature,
-      location,
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "monitor-berry-temperature",
+      {
+        batch_id: parseInt(batchId),
+        temperature,
+        location,
+      }
+    );
+
+    // Ensure the response has success field
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   async manageBerryQuality(batchId: string): Promise<any> {
-    return this.callConnectionAction("sonic", "manage-berry-quality", {
-      batch_id: parseInt(batchId),
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "manage-berry-quality",
+      {
+        batch_id: parseInt(batchId),
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   async processRecommendations(batchId: string): Promise<any> {
-    return this.callConnectionAction("sonic", "process-agent-recommendations", {
-      batch_id: parseInt(batchId),
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "process-agent-recommendations",
+      {
+        batch_id: parseInt(batchId),
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   // Batch management methods
   async createBatch(berryType: string): Promise<any> {
-    return this.callConnectionAction("sonic", "manage-batch-lifecycle", {
-      action: "create",
-      berry_type: berryType,
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "manage-batch-lifecycle",
+      {
+        action: "create",
+        berry_type: berryType,
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   async getBatchStatus(batchId: string): Promise<any> {
-    return this.callConnectionAction("sonic", "manage-batch-lifecycle", {
-      action: "status",
-      batch_id: parseInt(batchId),
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "manage-batch-lifecycle",
+      {
+        action: "status",
+        batch_id: parseInt(batchId),
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   async getBatchReport(batchId: string): Promise<any> {
-    return this.callConnectionAction("sonic", "manage-batch-lifecycle", {
-      action: "report",
-      batch_id: parseInt(batchId),
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "manage-batch-lifecycle",
+      {
+        action: "report",
+        batch_id: parseInt(batchId),
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   async completeBatch(batchId: string): Promise<any> {
-    return this.callConnectionAction("sonic", "manage-batch-lifecycle", {
-      action: "complete",
-      batch_id: parseInt(batchId),
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "manage-batch-lifecycle",
+      {
+        action: "complete",
+        batch_id: parseInt(batchId),
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "redirected") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   async manageBatchSequence(
@@ -207,12 +315,25 @@ class BerrySupplyChainClient {
     locations: string[],
     completeShipment: boolean
   ): Promise<any> {
-    return this.callConnectionAction("sonic", "manage-batch-sequence", {
-      berry_type: berryType,
-      temperatures,
-      locations,
-      complete_shipment: completeShipment,
-    });
+    const result = await this.callConnectionAction(
+      "sonic",
+      "manage-batch-sequence",
+      {
+        berry_type: berryType,
+        temperatures,
+        locations,
+        complete_shipment: completeShipment,
+      }
+    );
+
+    // Normalize response format
+    if (result && typeof result === "object" && !result.success) {
+      if (result.status === "completed" || result.status === "success") {
+        result.success = true;
+      }
+    }
+
+    return result;
   }
 
   // System health method
@@ -271,7 +392,18 @@ class BerrySupplyChainClient {
 
   async getTemperatureHistory(batchId: string): Promise<any[]> {
     const batchReport = await this.getBatchReport(batchId);
-    return batchReport.result?.report?.temperature_history || [];
+
+    // Try different paths to find temperature history
+    let temperatureHistory = [];
+    if (batchReport?.report?.temperature_history) {
+      temperatureHistory = batchReport.report.temperature_history;
+    } else if (batchReport?.temperature_stats?.readings) {
+      temperatureHistory = batchReport.temperature_stats.readings;
+    } else if (batchReport?.report?.temperature_stats?.readings) {
+      temperatureHistory = batchReport.report.temperature_stats.readings;
+    }
+
+    return temperatureHistory || [];
   }
 
   async getQualityAssessment(batchId: string): Promise<any> {

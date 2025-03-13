@@ -1,5 +1,7 @@
-import React from "react";
-import Link from "next/link";
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
   CardHeader,
@@ -9,177 +11,241 @@ import {
   CardFooter,
 } from "../ui/card";
 import { Button } from "../ui/button";
-import { useQuality } from "../../lib/hooks/useQuality";
+import { Input } from "../ui/input";
+import { useTemperature } from "../../lib/hooks/useTemperature";
+import { useBatch } from "../../lib/hooks/useBatch";
 
-interface BatchCardProps {
-  batch: {
-    batch_id?: string | number;
-    id?: string | number; // Some responses might use id instead of batch_id
-    berry_type?: string;
-    berryType?: string;
-    batch_status?: string;
-    quality_score?: number;
-    start_time?: string;
-    timestamp?: string;
+const TemperatureForm: React.FC = () => {
+  // Add isMounted state
+  const [isMounted, setIsMounted] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const { recordTemperature, loading, error } = useTemperature();
+  const { fetchBatchById, selectedBatch } = useBatch();
+
+  const [temperature, setTemperature] = useState<number>(2.0);
+  const [location, setLocation] = useState<string>("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isBreached, setIsBreached] = useState<boolean>(false);
+  const [isValidBatchId, setIsValidBatchId] = useState<boolean>(true);
+
+  const locations = [
+    "Cold Storage",
+    "Loading Dock",
+    "Transport",
+    "Distribution Center",
+    "Retail",
+  ];
+
+  // Set isMounted and extract batchId from URL query parameters
+  useEffect(() => {
+    setIsMounted(true);
+
+    // Get batchId from query parameters
+    const id = searchParams.get("batchId");
+    if (id) {
+      console.log("Found batch ID in query params:", id);
+
+      // Check if the ID is valid (numeric)
+      const isValid = /^\d+$/.test(id) && id.toLowerCase() !== "unknown";
+      setIsValidBatchId(isValid);
+
+      if (isValid) {
+        setBatchId(id);
+      } else {
+        setFormError("Invalid Batch ID format. Please select a valid batch.");
+        console.error("Invalid batch ID format:", id);
+      }
+    } else {
+      console.log("No batch ID found in query params");
+      setFormError("Batch ID is required");
+      setIsValidBatchId(false);
+    }
+  }, [searchParams]);
+
+  // Fetch batch details when batchId is available
+  useEffect(() => {
+    if (batchId && isMounted && isValidBatchId) {
+      console.log("Fetching batch details for ID:", batchId);
+      fetchBatchById(batchId);
+    }
+  }, [batchId, fetchBatchById, isMounted, isValidBatchId]);
+
+  // Check temperature ranges
+  useEffect(() => {
+    // Check if temperature is outside the optimal range
+    if (temperature < 0 || temperature > 4) {
+      setIsBreached(true);
+    } else {
+      setIsBreached(false);
+    }
+  }, [temperature]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!batchId) {
+      setFormError("Batch ID is required");
+      return;
+    }
+
+    if (!isValidBatchId) {
+      setFormError("Invalid Batch ID format. Please select a valid batch.");
+      return;
+    }
+
+    if (!location) {
+      setFormError("Please select a location");
+      return;
+    }
+
+    try {
+      console.log(
+        `Recording temperature ${temperature}°C at ${location} for batch ${batchId}`
+      );
+      const result = await recordTemperature(batchId, temperature, location);
+
+      if (result && (result.success || result.status === "completed")) {
+        console.log("Temperature recorded successfully:", result);
+        // Only navigate if component is mounted
+        router.push(`/batches/${batchId}`);
+      } else {
+        setFormError(result?.error || "Failed to record temperature");
+      }
+    } catch (err: any) {
+      console.error("Error recording temperature:", err);
+      setFormError(err.message || "Failed to record temperature");
+    }
   };
-}
 
-const BatchCard: React.FC<BatchCardProps> = ({ batch }) => {
-  const { getQualityCategory } = useQuality();
-
-  // Get batch ID - try different possible fields and formats
-  const batchId = batch.batch_id || batch.id || "Unknown";
-
-  // Parse batch ID if it's in a nested format (sometimes APIs return objects)
-  const parsedBatchId = typeof batchId === "object" ? "Unknown" : batchId;
-
-  // Check if batch_id is valid (not undefined, null, or "Unknown")
-  const hasValidId =
-    parsedBatchId !== undefined &&
-    parsedBatchId !== null &&
-    parsedBatchId !== "Unknown" &&
-    parsedBatchId !== "unknown";
-
-  // Use berryType as fallback for berry_type
-  const berryType = batch.berry_type || batch.berryType || "Unknown type";
-
-  const qualityInfo = getQualityCategory(batch.quality_score);
-
-  const formattedDate = batch.start_time || batch.timestamp || "Unknown date";
-
-  // Try to determine status - assume InTransit for unknown batches to allow temperature recording
-  // This is a fallback for development/testing
-  const status = batch.batch_status || "InTransit"; // Default to InTransit for testing
-  const isActive = status === "InTransit";
-
-  // Helper function to get quality text color class
-  const getQualityTextColorClass = (colorName: string | undefined) => {
-    if (!colorName) return "text-gray-600";
-
-    switch (colorName) {
-      case "green":
-        return "text-green-600";
-      case "teal":
-        return "text-teal-600";
-      case "yellow":
-        return "text-yellow-600";
-      case "orange":
-        return "text-orange-600";
-      case "red":
-        return "text-red-600";
-      default:
-        return "text-gray-600";
+  const handleCancel = () => {
+    if (batchId && isMounted && isValidBatchId) {
+      router.push(`/batches/${batchId}`);
+    } else {
+      router.push("/batches");
     }
   };
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="w-full max-w-lg mx-auto">
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>Batch #{hasValidId ? parsedBatchId : "Unknown"}</CardTitle>
-          <div
-            className={`px-2 py-1 rounded-full text-xs text-white ${
-              status === "InTransit"
-                ? "bg-blue-500"
-                : status === "Delivered"
-                ? "bg-green-500"
-                : status === "Rejected"
-                ? "bg-red-500"
-                : "bg-gray-500"
-            }`}
-          >
-            {status || "Unknown"}
-          </div>
-        </div>
-        <CardDescription>{berryType}</CardDescription>
+        <CardTitle>Record Temperature</CardTitle>
+        <CardDescription>
+          {selectedBatch && isValidBatchId ? (
+            <>
+              Recording temperature for Batch #{batchId} -{" "}
+              {selectedBatch.berry_type || "Unknown"}
+            </>
+          ) : (
+            <>
+              Recording temperature for{" "}
+              {isValidBatchId ? `Batch #${batchId || "?"}` : "Batch"}
+            </>
+          )}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow">
-        <div className="space-y-2">
-          <div className="flex justify-between">
-            <span className="text-sm font-medium">Quality Score:</span>
-            <span
-              className={`text-sm font-semibold ${getQualityTextColorClass(
-                qualityInfo?.color
-              )}`}
+      <CardContent>
+        {!isValidBatchId ? (
+          <div className="p-4 border border-red-300 bg-red-50 rounded-md text-red-700 mb-4">
+            <p className="font-medium">Invalid Batch ID format</p>
+            <p className="text-sm mt-1">
+              Please go back to the batches page and select a valid batch.
+            </p>
+            <Button
+              onClick={() => router.push("/batches?action=recordTemp")}
+              className="mt-3 bg-blue-600 hover:bg-blue-700"
+              size="sm"
             >
-              {batch.quality_score !== undefined
-                ? `${batch.quality_score}%`
-                : "N/A"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-sm font-medium">Created:</span>
-            <span className="text-sm">
-              {typeof formattedDate === "string"
-                ? formattedDate.slice(0, 10)
-                : "Unknown"}
-            </span>
-          </div>
-
-          {/* Add indicator if batch can have temperature recorded */}
-          {isActive && (
-            <div className="mt-3 text-xs text-blue-600 flex items-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mr-1"
-              >
-                <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path>
-              </svg>
-              Temperature monitoring active
-            </div>
-          )}
-        </div>
-      </CardContent>
-      <CardFooter className="border-t pt-4">
-        <div className="w-full flex flex-col space-y-2">
-          {/* Always show View Details button */}
-          <Link href={`/batches/${parsedBatchId}`} passHref className="w-full">
-            <Button variant="outline" size="sm" className="w-full">
-              View Details
+              Select a Valid Batch
             </Button>
-          </Link>
-
-          {/* Show temperature recording button for active batches */}
-          {isActive && (
-            <Link
-              href={`/temperature/record?batchId=${parsedBatchId}`}
-              passHref
-              className="w-full"
-            >
-              <Button
-                size="sm"
-                className="w-full bg-blue-600 hover:bg-blue-700"
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label
+                htmlFor="temperature"
+                className="block text-sm font-medium"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="mr-1"
-                >
-                  <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path>
-                </svg>
-                Record Temperature
-              </Button>
-            </Link>
-          )}
-        </div>
+                Temperature (°C)
+              </label>
+              <Input
+                id="temperature"
+                type="number"
+                step="0.1"
+                value={temperature}
+                onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                min="-10"
+                max="40"
+                className={`w-full ${isBreached ? "border-red-500" : ""}`}
+                disabled={loading}
+              />
+              {isBreached && (
+                <p className="text-sm text-red-500">
+                  Warning: Temperature is outside the optimal range (0°C - 4°C)
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="location" className="block text-sm font-medium">
+                Location
+              </label>
+              <select
+                id="location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full p-2 border rounded-md"
+                disabled={loading}
+              >
+                <option value="" disabled>
+                  Select a location
+                </option>
+                {locations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {!batchId && isValidBatchId && (
+              <div className="text-red-500 text-sm">Batch ID is required</div>
+            )}
+
+            {(error || formError) && (
+              <div className="text-red-500 text-sm">{error || formError}</div>
+            )}
+          </form>
+        )}
+      </CardContent>
+      <CardFooter className="flex justify-between">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleCancel}
+          disabled={loading}
+        >
+          Cancel
+        </Button>
+        {isValidBatchId && (
+          <Button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading || !batchId || !location}
+            className={isBreached ? "bg-yellow-500 hover:bg-yellow-600" : ""}
+          >
+            {loading
+              ? "Recording..."
+              : isBreached
+              ? "Record with Warning"
+              : "Record Temperature"}
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
 };
 
-export default BatchCard;
+export default TemperatureForm;

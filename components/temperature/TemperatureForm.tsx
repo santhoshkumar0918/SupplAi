@@ -28,6 +28,7 @@ const TemperatureForm: React.FC = () => {
   const [location, setLocation] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
   const [isBreached, setIsBreached] = useState<boolean>(false);
+  const [isValidBatchId, setIsValidBatchId] = useState<boolean>(true);
 
   const locations = [
     "Cold Storage",
@@ -45,20 +46,31 @@ const TemperatureForm: React.FC = () => {
     const id = searchParams.get("batchId");
     if (id) {
       console.log("Found batch ID in query params:", id);
-      setBatchId(id);
+
+      // Check if the ID is valid (numeric)
+      const isValid = /^\d+$/.test(id) && id.toLowerCase() !== "unknown";
+      setIsValidBatchId(isValid);
+
+      if (isValid) {
+        setBatchId(id);
+      } else {
+        setFormError("Invalid Batch ID format. Please select a valid batch.");
+        console.error("Invalid batch ID format:", id);
+      }
     } else {
       console.log("No batch ID found in query params");
       setFormError("Batch ID is required");
+      setIsValidBatchId(false);
     }
   }, [searchParams]);
 
   // Fetch batch details when batchId is available
   useEffect(() => {
-    if (batchId && isMounted) {
+    if (batchId && isMounted && isValidBatchId) {
       console.log("Fetching batch details for ID:", batchId);
       fetchBatchById(batchId);
     }
-  }, [batchId, fetchBatchById, isMounted]);
+  }, [batchId, fetchBatchById, isMounted, isValidBatchId]);
 
   // Check temperature ranges
   useEffect(() => {
@@ -76,6 +88,11 @@ const TemperatureForm: React.FC = () => {
 
     if (!batchId) {
       setFormError("Batch ID is required");
+      return;
+    }
+
+    if (!isValidBatchId) {
+      setFormError("Invalid Batch ID format. Please select a valid batch.");
       return;
     }
 
@@ -104,7 +121,7 @@ const TemperatureForm: React.FC = () => {
   };
 
   const handleCancel = () => {
-    if (batchId && isMounted) {
+    if (batchId && isMounted && isValidBatchId) {
       router.push(`/batches/${batchId}`);
     } else {
       router.push("/batches");
@@ -116,70 +133,92 @@ const TemperatureForm: React.FC = () => {
       <CardHeader>
         <CardTitle>Record Temperature</CardTitle>
         <CardDescription>
-          {selectedBatch ? (
+          {selectedBatch && isValidBatchId ? (
             <>
               Recording temperature for Batch #{batchId} -{" "}
               {selectedBatch.berry_type || "Unknown"}
             </>
           ) : (
-            <>Recording temperature for Batch #{batchId || "?"}</>
+            <>
+              Recording temperature for{" "}
+              {isValidBatchId ? `Batch #${batchId || "?"}` : "Batch"}
+            </>
           )}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="temperature" className="block text-sm font-medium">
-              Temperature (°C)
-            </label>
-            <Input
-              id="temperature"
-              type="number"
-              step="0.1"
-              value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              min="-10"
-              max="40"
-              className={`w-full ${isBreached ? "border-red-500" : ""}`}
-              disabled={loading}
-            />
-            {isBreached && (
-              <p className="text-sm text-red-500">
-                Warning: Temperature is outside the optimal range (0°C - 4°C)
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="location" className="block text-sm font-medium">
-              Location
-            </label>
-            <select
-              id="location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full p-2 border rounded-md"
-              disabled={loading}
+        {!isValidBatchId ? (
+          <div className="p-4 border border-red-300 bg-red-50 rounded-md text-red-700 mb-4">
+            <p className="font-medium">Invalid Batch ID format</p>
+            <p className="text-sm mt-1">
+              Please go back to the batches page and select a valid batch.
+            </p>
+            <Button
+              onClick={() => router.push("/batches?action=recordTemp")}
+              className="mt-3 bg-blue-600 hover:bg-blue-700"
+              size="sm"
             >
-              <option value="" disabled>
-                Select a location
-              </option>
-              {locations.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
+              Select a Valid Batch
+            </Button>
           </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label
+                htmlFor="temperature"
+                className="block text-sm font-medium"
+              >
+                Temperature (°C)
+              </label>
+              <Input
+                id="temperature"
+                type="number"
+                step="0.1"
+                value={temperature}
+                onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                min="-10"
+                max="40"
+                className={`w-full ${isBreached ? "border-red-500" : ""}`}
+                disabled={loading}
+              />
+              {isBreached && (
+                <p className="text-sm text-red-500">
+                  Warning: Temperature is outside the optimal range (0°C - 4°C)
+                </p>
+              )}
+            </div>
 
-          {!batchId && (
-            <div className="text-red-500 text-sm">Batch ID is required</div>
-          )}
+            <div className="space-y-2">
+              <label htmlFor="location" className="block text-sm font-medium">
+                Location
+              </label>
+              <select
+                id="location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full p-2 border rounded-md"
+                disabled={loading}
+              >
+                <option value="" disabled>
+                  Select a location
+                </option>
+                {locations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {(error || formError) && (
-            <div className="text-red-500 text-sm">{error || formError}</div>
-          )}
-        </form>
+            {!batchId && isValidBatchId && (
+              <div className="text-red-500 text-sm">Batch ID is required</div>
+            )}
+
+            {(error || formError) && (
+              <div className="text-red-500 text-sm">{error || formError}</div>
+            )}
+          </form>
+        )}
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button
@@ -190,18 +229,20 @@ const TemperatureForm: React.FC = () => {
         >
           Cancel
         </Button>
-        <Button
-          type="submit"
-          onClick={handleSubmit}
-          disabled={loading || !batchId || !location}
-          className={isBreached ? "bg-yellow-500 hover:bg-yellow-600" : ""}
-        >
-          {loading
-            ? "Recording..."
-            : isBreached
-            ? "Record with Warning"
-            : "Record Temperature"}
-        </Button>
+        {isValidBatchId && (
+          <Button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading || !batchId || !location}
+            className={isBreached ? "bg-yellow-500 hover:bg-yellow-600" : ""}
+          >
+            {loading
+              ? "Recording..."
+              : isBreached
+              ? "Record with Warning"
+              : "Record Temperature"}
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
