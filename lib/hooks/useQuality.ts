@@ -25,6 +25,12 @@ export function useQuality() {
   const client = new BerrySupplyChainClient();
 
   const assessQuality = useCallback(async (batchId: string) => {
+    if (!batchId) {
+      console.error("Invalid batch ID for quality assessment:", batchId);
+      setError("Invalid batch ID provided");
+      return null;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -41,22 +47,31 @@ export function useQuality() {
         throw new Error(response.error);
       }
 
+      // Handle different response formats
       if (response.result) {
         if (response.result.status && response.result.status !== "completed") {
           throw new Error(
             response.result.error || "Quality assessment not completed"
           );
         }
-
+        // For debugging
+        console.log("Setting quality assessment from result:", response.result);
         setQualityAssessment(response.result);
         return response.result;
       }
 
-      if (response.success === true) {
+      if (response.success === true || response.quality_score !== undefined) {
+        // For debugging
+        console.log(
+          "Setting quality assessment from direct response:",
+          response
+        );
         setQualityAssessment(response);
         return response;
       }
 
+      // If we couldn't find any useful data, log and throw error
+      console.error("Unexpected quality assessment response format:", response);
       throw new Error("Failed to assess quality: Unexpected response format");
     } catch (err: any) {
       const errorMessage =
@@ -118,26 +133,49 @@ export function useQuality() {
     }
   }, []);
 
-  const getActionColor = useCallback((action: string | undefined) => {
-    const actionMap: Record<string, string> = {
-      "No Action": "green",
-      Alert: "blue",
-      Expedite: "orange",
-      Reroute: "yellow",
-      Reject: "red",
-    };
+  const getActionColor = useCallback((action: string | undefined): string => {
+    if (!action) return "gray";
 
-    return actionMap[action || ""] || "gray";
+    // Normalize the action by converting to lowercase and trimming
+    const normalizedAction = action.toLowerCase().trim();
+
+    if (
+      normalizedAction.includes("no action") ||
+      normalizedAction.includes("proceed")
+    ) {
+      return "green";
+    } else if (
+      normalizedAction.includes("alert") ||
+      normalizedAction.includes("monitor")
+    ) {
+      return "blue";
+    } else if (normalizedAction.includes("expedite")) {
+      return "orange";
+    } else if (normalizedAction.includes("reroute")) {
+      return "yellow";
+    } else if (
+      normalizedAction.includes("reject") ||
+      normalizedAction.includes("discard")
+    ) {
+      return "red";
+    } else {
+      return "gray";
+    }
   }, []);
 
   const getQualityCategory = useCallback((score: number | undefined) => {
     if (score === undefined || score === null)
       return { category: "Unknown", color: "gray" };
 
-    if (score >= 90) return { category: "Excellent", color: "green" };
-    if (score >= 80) return { category: "Good", color: "teal" };
-    if (score >= 70) return { category: "Fair", color: "yellow" };
-    if (score >= 60) return { category: "Poor", color: "orange" };
+    // Make sure we're dealing with a number
+    const numericScore = typeof score === "string" ? parseFloat(score) : score;
+
+    if (isNaN(numericScore)) return { category: "Unknown", color: "gray" };
+
+    if (numericScore >= 90) return { category: "Excellent", color: "green" };
+    if (numericScore >= 80) return { category: "Good", color: "teal" };
+    if (numericScore >= 70) return { category: "Fair", color: "yellow" };
+    if (numericScore >= 60) return { category: "Poor", color: "orange" };
     return { category: "Critical", color: "red" };
   }, []);
 

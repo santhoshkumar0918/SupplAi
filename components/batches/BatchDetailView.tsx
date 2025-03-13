@@ -298,7 +298,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
                       : batchDetails.batch_status === "Delivered"
                       ? "bg-green-500"
                       : batchDetails.batch_status === "Rejected"
-                      ? "bg-red-500"
+                      ? " bg-red-500"
                       : "bg-gray-500"
                   }`}
                 >
@@ -349,9 +349,28 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
               <div className="flex justify-between">
                 <span className="font-medium">Recommended Action:</span>
                 <span
-                  className={`text-${getActionColor(
-                    qualityAssessment?.recommended_action
-                  )}-600 font-medium`}
+                  className={
+                    getActionColor(qualityAssessment?.recommended_action) ===
+                    "green"
+                      ? "text-green-600 font-medium"
+                      : getActionColor(
+                          qualityAssessment?.recommended_action
+                        ) === "blue"
+                      ? "text-blue-600 font-medium"
+                      : getActionColor(
+                          qualityAssessment?.recommended_action
+                        ) === "yellow"
+                      ? "text-yellow-600 font-medium"
+                      : getActionColor(
+                          qualityAssessment?.recommended_action
+                        ) === "orange"
+                      ? "text-orange-600 font-medium"
+                      : getActionColor(
+                          qualityAssessment?.recommended_action
+                        ) === "red"
+                      ? "text-red-600 font-medium"
+                      : "text-gray-600 font-medium"
+                  }
                 >
                   {qualityAssessment?.recommended_action || "No Action"}
                 </span>

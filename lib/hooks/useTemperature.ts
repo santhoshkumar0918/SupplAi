@@ -19,14 +19,19 @@ export function useTemperature() {
 
   const recordTemperature = useCallback(
     async (batchId: string, temperature: number, location: string) => {
+      if (!batchId) {
+        console.error("recordTemperature called without batchId");
+        setError("Batch ID is required");
+        return null;
+      }
+
       setLoading(true);
       setError(null);
 
       try {
-        // Validate batchId before making the API call
-        if (!batchId) {
-          throw new Error("Batch ID is required");
-        }
+        console.log(
+          `Recording temperature ${temperature}°C at ${location} for batch ${batchId}`
+        );
 
         // Ensure batchId is a valid number
         const batchIdNum = parseInt(batchId, 10);
@@ -41,17 +46,28 @@ export function useTemperature() {
           location
         );
 
+        console.log("Temperature recording response:", response);
+
+        // Handle different response formats
         if (response.result?.status === "completed") {
           return response.result;
+        } else if (response.status === "completed") {
+          return response;
+        } else if (response.success === true) {
+          return response;
         } else {
+          console.error("Unexpected response format:", response);
           throw new Error(
-            response.result?.error || "Failed to record temperature"
+            response.result?.error ||
+              response.error ||
+              "Failed to record temperature"
           );
         }
       } catch (err: any) {
-        setError(
-          err.message || "An error occurred while recording temperature"
-        );
+        console.error("Error recording temperature:", err);
+        const errorMessage =
+          err.message || "An error occurred while recording temperature";
+        setError(errorMessage);
         return null;
       } finally {
         setLoading(false);
@@ -61,14 +77,17 @@ export function useTemperature() {
   );
 
   const fetchTemperatureHistory = useCallback(async (batchId: string) => {
+    if (!batchId) {
+      console.error("fetchTemperatureHistory called without batchId");
+      setError("Batch ID is required");
+      return [];
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Validate batchId before making the API call
-      if (!batchId) {
-        throw new Error("Batch ID is required");
-      }
+      console.log(`Fetching temperature history for batch ${batchId}`);
 
       // Ensure batchId is a valid number
       const batchIdNum = parseInt(batchId, 10);
@@ -78,21 +97,31 @@ export function useTemperature() {
 
       // We'll get the temperature history from the batch report
       const batchReport = await client.getBatchReport(batchIdNum.toString());
+      console.log("Batch report response:", batchReport);
+
+      // Handle different response formats
+      let history = [];
 
       if (batchReport.result?.status === "completed") {
-        const history = batchReport.result?.temperature_stats?.readings || [];
-        setTemperatureHistory(history);
-        return history;
+        history = batchReport.result?.temperature_stats?.readings || [];
+      } else if (batchReport.temperature_stats?.readings) {
+        history = batchReport.temperature_stats.readings;
+      } else if (batchReport.status === "completed" && batchReport.readings) {
+        history = batchReport.readings;
       } else {
-        throw new Error(
-          batchReport.result?.error || "Failed to fetch temperature history"
-        );
+        console.log("No temperature readings found in batch report");
+        history = [];
       }
+
+      console.log(`Found ${history.length} temperature readings`);
+      setTemperatureHistory(history);
+      return history;
     } catch (err: any) {
-      setError(
+      console.error("Error fetching temperature history:", err);
+      const errorMessage =
         err.message ||
-          `An error occurred while fetching temperature history for batch ${batchId}`
-      );
+        `An error occurred while fetching temperature history for batch ${batchId}`;
+      setError(errorMessage);
       return [];
     } finally {
       setLoading(false);

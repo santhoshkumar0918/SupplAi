@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
   CardHeader,
@@ -19,6 +19,7 @@ const TemperatureForm: React.FC = () => {
   // Add isMounted state
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [batchId, setBatchId] = useState<string | null>(null);
   const { recordTemperature, loading, error } = useTemperature();
   const { fetchBatchById, selectedBatch } = useBatch();
@@ -36,35 +37,30 @@ const TemperatureForm: React.FC = () => {
     "Retail",
   ];
 
-  // Set isMounted and extract batchId from URL
+  // Set isMounted and extract batchId from URL query parameters
   useEffect(() => {
     setIsMounted(true);
 
-    // Extract batch ID from URL
-    if (typeof window !== "undefined") {
-      const pathParts = window.location.pathname.split("/");
-      let id = null;
-
-      // Look for the batch ID in the URL path
-      for (let i = 0; i < pathParts.length - 1; i++) {
-        if (pathParts[i] === "batches" || pathParts[i] === "batch") {
-          id = pathParts[i + 1];
-          break;
-        }
-      }
-
-      if (id && !isNaN(Number(id))) {
-        setBatchId(id);
-      }
+    // Get batchId from query parameters
+    const id = searchParams.get("batchId");
+    if (id) {
+      console.log("Found batch ID in query params:", id);
+      setBatchId(id);
+    } else {
+      console.log("No batch ID found in query params");
+      setFormError("Batch ID is required");
     }
-  }, []);
+  }, [searchParams]);
 
+  // Fetch batch details when batchId is available
   useEffect(() => {
     if (batchId && isMounted) {
+      console.log("Fetching batch details for ID:", batchId);
       fetchBatchById(batchId);
     }
   }, [batchId, fetchBatchById, isMounted]);
 
+  // Check temperature ranges
   useEffect(() => {
     // Check if temperature is outside the optimal range
     if (temperature < 0 || temperature > 4) {
@@ -89,12 +85,18 @@ const TemperatureForm: React.FC = () => {
     }
 
     try {
+      console.log(
+        `Recording temperature ${temperature}°C at ${location} for batch ${batchId}`
+      );
       const result = await recordTemperature(batchId, temperature, location);
+
       if (result && isMounted) {
+        console.log("Temperature recorded successfully:", result);
         // Only navigate if component is mounted
         router.push(`/batches/${batchId}`);
       }
     } catch (err: any) {
+      console.error("Error recording temperature:", err);
       setFormError(err.message || "Failed to record temperature");
     }
   };
@@ -102,6 +104,8 @@ const TemperatureForm: React.FC = () => {
   const handleCancel = () => {
     if (batchId && isMounted) {
       router.push(`/batches/${batchId}`);
+    } else {
+      router.push("/batches");
     }
   };
 
@@ -116,7 +120,7 @@ const TemperatureForm: React.FC = () => {
               {selectedBatch.berry_type}
             </>
           ) : (
-            <>Recording temperature for Batch #{batchId}</>
+            <>Recording temperature for Batch #{batchId || "?"}</>
           )}
         </CardDescription>
       </CardHeader>
@@ -166,6 +170,10 @@ const TemperatureForm: React.FC = () => {
             </select>
           </div>
 
+          {!batchId && (
+            <div className="text-red-500 text-sm">Batch ID is required</div>
+          )}
+
           {(error || formError) && (
             <div className="text-red-500 text-sm">{error || formError}</div>
           )}
@@ -183,7 +191,7 @@ const TemperatureForm: React.FC = () => {
         <Button
           type="submit"
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || !batchId}
           className={isBreached ? "bg-yellow-500 hover:bg-yellow-600" : ""}
         >
           {loading
