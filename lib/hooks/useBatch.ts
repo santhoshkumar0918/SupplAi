@@ -8,7 +8,7 @@ interface BatchDetails {
   quality_score?: number;
   predicted_shelf_life_hours?: number;
   start_time?: string;
-  end_time?: string;
+  end_time?: string | null;
   is_active?: boolean;
 }
 
@@ -34,6 +34,29 @@ export function useBatch() {
 
   const client = new BerrySupplyChainClient();
 
+  // Helper function to transform camelCase to snake_case
+  const transformBatchResponse = (response: any): BatchDetails => {
+    // Check if response has camelCase properties
+    if (response?.batchId !== undefined) {
+      return {
+        batch_id: response.batchId,
+        berry_type: response.berryType,
+        start_time: response.startTime
+          ? new Date(response.startTime * 1000).toLocaleString()
+          : undefined,
+        end_time: response.endTime
+          ? new Date(response.endTime * 1000).toLocaleString()
+          : undefined,
+        is_active: response.isActive,
+        batch_status: response.isActive ? "InTransit" : "Delivered",
+        quality_score: response.qualityScore || 0,
+        predicted_shelf_life_hours: response.predictedShelfLife || 0,
+      };
+    }
+    // If response already has snake_case properties, return as is
+    return response;
+  };
+
   const createBatch = useCallback(async (berryType: string) => {
     setLoading(true);
     setError(null);
@@ -57,13 +80,16 @@ export function useBatch() {
       }
 
       // If there's a direct batch_id in the response
-      if (response.batch_id !== undefined) {
-        return response;
+      if (response.batch_id !== undefined || response.batchId !== undefined) {
+        return transformBatchResponse(response);
       }
 
       // If there's a result with a batch_id
-      if (response.result?.batch_id !== undefined) {
-        return response.result;
+      if (
+        response.result?.batch_id !== undefined ||
+        response.result?.batchId !== undefined
+      ) {
+        return transformBatchResponse(response.result);
       }
 
       // If response itself is the result
@@ -104,16 +130,17 @@ export function useBatch() {
           console.log(`Batch ${i} response:`, response);
 
           // Check for valid response in different formats
-          if (
-            response &&
-            response.result &&
-            (response.result.status === "completed" || response.result.batch_id)
-          ) {
-            batchData.push(response.result);
-          } else if (response && response.batch_id) {
-            batchData.push(response);
-          } else if (response && response.status === "success") {
-            batchData.push(response);
+          if (response) {
+            if (response.result) {
+              batchData.push(transformBatchResponse(response.result));
+            } else if (
+              response.batchId !== undefined ||
+              response.batch_id !== undefined
+            ) {
+              batchData.push(transformBatchResponse(response));
+            } else if (response.status === "success") {
+              batchData.push(response);
+            }
           }
         } catch (err) {
           // Ignore errors for individual batches
@@ -148,8 +175,18 @@ export function useBatch() {
       const response = await client.getBatchStatus(batchId);
       console.log(`Raw response for batch ${batchId}:`, response);
 
-      // Handle different response formats
-      if (
+      // Handle camelCase response format
+      if (response?.batchId !== undefined) {
+        const transformedResponse = transformBatchResponse(response);
+        console.log(
+          `Setting selected batch from transformed response:`,
+          transformedResponse
+        );
+        setSelectedBatch(transformedResponse);
+        return transformedResponse;
+      }
+      // Handle other response formats
+      else if (
         response?.result?.status === "completed" ||
         response?.result?.batch_id
       ) {
@@ -197,8 +234,31 @@ export function useBatch() {
         const response = await client.getBatchReport(batchId);
         console.log(`Batch report response:`, response);
 
-        // Handle different response formats
-        if (
+        // Handle camelCase response formats
+        if (response?.batchDetails || response?.temperatureStats) {
+          const transformedReport: BatchReport = {
+            batch_details: response.batchDetails
+              ? transformBatchResponse(response.batchDetails)
+              : undefined,
+            temperature_stats: response.temperatureStats
+              ? {
+                  reading_count: response.temperatureStats.readingCount,
+                  breach_count: response.temperatureStats.breachCount,
+                  breach_percentage: response.temperatureStats.breachPercentage,
+                  max_temperature: response.temperatureStats.maxTemperature,
+                  min_temperature: response.temperatureStats.minTemperature,
+                  readings: response.temperatureStats.readings,
+                }
+              : undefined,
+            predictions: response.predictions,
+          };
+
+          console.log(`Setting transformed batch report:`, transformedReport);
+          setBatchReport(transformedReport);
+          return transformedReport;
+        }
+        // Handle existing response formats
+        else if (
           response?.result?.status === "completed" ||
           response?.result?.batch_details
         ) {
@@ -219,13 +279,19 @@ export function useBatch() {
             response
           );
           // Instead of throwing, return an empty report object
-          return { batch_details: selectedBatch || undefined };
+          const emptyReport: BatchReport = {
+            batch_details: selectedBatch || undefined,
+          };
+          return emptyReport;
         }
       } catch (err: any) {
         console.error(`Error fetching batch report for ${batchId}:`, err);
         setError(err.message || `Failed to fetch batch report for ${batchId}`);
         // Return empty report rather than null to prevent cascading failures
-        return { batch_details: selectedBatch || undefined };
+        const emptyReport: BatchReport = {
+          batch_details: selectedBatch || undefined,
+        };
+        return emptyReport;
       } finally {
         setLoading(false);
       }
@@ -280,7 +346,7 @@ export function useBatch() {
     batchReport,
     createBatch,
     fetchBatches,
-    fetchBatchById, // Added the missing function
+    fetchBatchById,
     fetchBatchReport,
     completeBatch,
   };

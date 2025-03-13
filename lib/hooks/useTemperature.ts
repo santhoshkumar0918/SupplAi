@@ -17,21 +17,6 @@ export function useTemperature() {
 
   const client = new BerrySupplyChainClient();
 
-  /**
-   * Checks if a batch ID is valid
-   */
-  const isValidBatchId = (batchId: string | null): boolean => {
-    if (!batchId) return false;
-
-    // Check if it's a numeric string
-    return (
-      /^\d+$/.test(batchId) &&
-      batchId.toLowerCase() !== "unknown" &&
-      batchId !== "null" &&
-      batchId !== "undefined"
-    );
-  };
-
   const recordTemperature = useCallback(
     async (batchId: string, temperature: number, location: string) => {
       setLoading(true);
@@ -47,16 +32,11 @@ export function useTemperature() {
           throw new Error("Batch ID is required");
         }
 
-        // Check if batchId is a valid numeric string
-        if (!isValidBatchId(batchId)) {
-          throw new Error("Invalid Batch ID format");
-        }
-
         if (!location) {
           throw new Error("Location is required");
         }
 
-        // Call the API
+        // Call the API - fixed method name from monitor_temperature to monitorTemperature
         const response = await client.monitorTemperature(
           batchId,
           temperature,
@@ -67,11 +47,6 @@ export function useTemperature() {
 
         if (!response.success && response.error) {
           throw new Error(response.error);
-        }
-
-        // If there's no success flag but there's a status, consider it a success
-        if (response.status === "completed" || response.status === "success") {
-          response.success = true;
         }
 
         return response;
@@ -102,24 +77,33 @@ export function useTemperature() {
         throw new Error("Batch ID is required");
       }
 
-      // Check if batchId is a valid numeric string
-      if (!isValidBatchId(batchId)) {
-        throw new Error("Invalid Batch ID format");
+      // Get batch report which includes temperature history - fixed method name from get_batch_report to getBatchReport
+      const response = await client.getBatchReport(batchId);
+
+      console.log("Batch report response:", response);
+
+      if (!response.success && response.error) {
+        throw new Error(response.error);
       }
 
-      // Get temperature history through the client helper method
-      const readings = await client.getTemperatureHistory(batchId);
+      // Extract temperature readings
+      let readings: TemperatureReading[] = [];
 
-      console.log("Temperature history:", readings);
-
-      if (!readings || readings.length === 0) {
-        console.log("No temperature readings found");
-        setTemperatureHistory([]);
-        return [];
+      // Navigate through the response structure to find temperature readings
+      if (response.temperature_stats?.readings) {
+        readings = response.temperature_stats.readings;
+      } else if (response.batch_details?.temperature_stats?.readings) {
+        readings = response.batch_details.temperature_stats.readings;
+      } else if (response.report?.temperature_stats?.readings) {
+        readings = response.report.temperature_stats.readings;
+      } else if (response.report?.temperature_history) {
+        readings = response.report.temperature_history;
       }
+
+      console.log(`Found ${readings.length} temperature readings`);
 
       // Format the readings to ensure consistent structure
-      const formattedReadings = readings.map((reading: any) => {
+      const formattedReadings = readings.map((reading) => {
         // Ensure each reading has the required fields
         return {
           timestamp: reading.timestamp || Date.now(),
@@ -130,7 +114,6 @@ export function useTemperature() {
         };
       });
 
-      console.log(`Formatted ${formattedReadings.length} temperature readings`);
       setTemperatureHistory(formattedReadings);
       return formattedReadings;
     } catch (err: any) {
@@ -195,6 +178,5 @@ export function useTemperature() {
     recordTemperature,
     fetchTemperatureHistory,
     getBreachStatistics,
-    isValidBatchId,
   };
 }
