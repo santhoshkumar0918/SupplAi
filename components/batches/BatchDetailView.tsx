@@ -70,6 +70,8 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
       console.log(`Fetching batch with ID: ${batchId}`);
       const batchResult = await fetchBatchById(batchId);
 
+      console.log("Batch result:", batchResult); // Debug log
+
       // If batch fetch failed and we haven't exceeded max retries
       if (!batchResult) {
         if (retryAttempt < MAX_RETRIES - 1) {
@@ -179,6 +181,15 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     router.push("/batches");
   };
 
+  // Debug logs - Add these to help diagnose the issue
+  useEffect(() => {
+    console.log("Selected Batch:", selectedBatch);
+    console.log("Batch Report:", batchReport);
+    console.log("Is Loading:", isLoading);
+    console.log("Batch Loading:", batchLoading);
+    console.log("Data Loaded:", dataLoaded);
+  }, [selectedBatch, batchReport, isLoading, batchLoading, dataLoaded]);
+
   // Show loading state
   if (!isMounted || isLoading || batchLoading) {
     return (
@@ -238,6 +249,8 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   // Get batch details from either batch report or selected batch
   const batchDetails = batchReport?.batch_details || selectedBatch;
 
+  console.log("Final Batch Details:", batchDetails); // Debug log
+
   // Initialize stats with safe defaults
   const stats = temperatureHistory?.length
     ? getBreachStatistics(temperatureHistory)
@@ -254,8 +267,12 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     qualityAssessment?.quality_score || batchDetails.quality_score || 0
   );
 
-  // Determine if batch is active
-  const isActive = batchDetails.batch_status === "InTransit";
+  // Determine if batch is active - default to true if not specified
+  const isActive =
+    batchDetails.batch_status === "InTransit" ||
+    batchDetails.is_active === true ||
+    batchDetails.end_time === undefined ||
+    batchDetails.end_time === null;
 
   return (
     <div className="space-y-6">
@@ -299,10 +316,13 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
                       ? "bg-green-500"
                       : batchDetails.batch_status === "Rejected"
                       ? " bg-red-500"
+                      : isActive
+                      ? "bg-blue-500"
                       : "bg-gray-500"
                   }`}
                 >
-                  {batchDetails.batch_status || "Unknown"}
+                  {batchDetails.batch_status ||
+                    (isActive ? "InTransit" : "Unknown")}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -315,7 +335,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Active:</span>
-                <span>{batchDetails.is_active ? "Yes" : "No"}</span>
+                <span>{isActive ? "Yes" : "No"}</span>
               </div>
             </div>
           </CardContent>
