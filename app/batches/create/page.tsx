@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import CreateBatchForm from "../../../components/batches";
+import CreateBatchForm from "@/components/batches/CreateBatchForm";
 
 export default function CreateBatchPage() {
   return (

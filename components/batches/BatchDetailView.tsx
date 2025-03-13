@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation"; // Changed from next/router to next/navigation
+"use client";
+import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useBatch } from "../../lib/hooks/useBatch";
 import { useTemperature } from "../../lib/hooks/useTemperature";
 import { useQuality } from "../../lib/hooks/useQuality";
@@ -14,9 +15,13 @@ interface BatchDetailViewProps {
 }
 
 const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
-  // Always call hooks at the top level, not conditionally
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const MAX_RETRIES = 3;
 
   const {
     loading: batchLoading,
@@ -27,32 +32,87 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     batchReport,
     completeBatch,
   } = useBatch();
+
   const { fetchTemperatureHistory, temperatureHistory, getBreachStatistics } =
     useTemperature();
+
   const {
     assessQuality,
     qualityAssessment,
     getQualityCategory,
     getActionColor,
   } = useQuality();
+
   const [completing, setCompleting] = useState(false);
 
-  // Set mounted state after component mounts
+  // Initial mount effect
   useEffect(() => {
     setIsMounted(true);
+    return () => {
+      setIsMounted(false);
+    };
   }, []);
 
-  useEffect(() => {
-    if (!isMounted) return;
+  // Load data function (defined outside useEffect to prevent recreation)
+  const loadBatchData = useCallback(async () => {
+    if (!isMounted || dataLoaded) return;
 
-    const loadBatchData = async () => {
-      await fetchBatchById(batchId);
-      await fetchBatchReport(batchId);
-      await fetchTemperatureHistory(batchId);
-      await assessQuality(batchId);
-    };
+    console.log(
+      `Loading data for batch ID: ${batchId} (Attempt ${
+        retryAttempt + 1
+      }/${MAX_RETRIES})`
+    );
+    setIsLoading(true);
+    setLoadError(null);
 
-    loadBatchData();
+    try {
+      // Try to fetch the batch data
+      console.log(`Fetching batch with ID: ${batchId}`);
+      const batchResult = await fetchBatchById(batchId);
+
+      // If batch fetch failed and we haven't exceeded max retries
+      if (!batchResult) {
+        if (retryAttempt < MAX_RETRIES - 1) {
+          console.log(
+            `Batch fetch failed, will retry in ${
+              2000 * (retryAttempt + 1)
+            }ms...`
+          );
+          setRetryAttempt((prev) => prev + 1);
+          setIsLoading(false);
+          return;
+        } else {
+          throw new Error(
+            `Failed to fetch batch with ID ${batchId} after ${MAX_RETRIES} attempts`
+          );
+        }
+      }
+
+      // Fetch additional data
+      console.log(
+        `Successfully fetched batch ${batchId}, fetching additional data...`
+      );
+
+      // Use Promise.all to fetch all related data in parallel
+      await Promise.all([
+        fetchBatchReport(batchId),
+        fetchTemperatureHistory(batchId),
+        assessQuality(batchId),
+      ]);
+
+      // Mark data as loaded to prevent further fetches
+      setDataLoaded(true);
+      setIsLoading(false);
+      setLoadError(null);
+    } catch (error) {
+      console.error("Error loading batch data:", error);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Unknown error loading batch data"
+      );
+      setIsLoading(false);
+    }
   }, [
     batchId,
     fetchBatchById,
@@ -60,7 +120,32 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     fetchTemperatureHistory,
     assessQuality,
     isMounted,
+    retryAttempt,
+    dataLoaded,
+    MAX_RETRIES,
   ]);
+
+  // Effect to load data once on mount or when batchId changes
+  useEffect(() => {
+    if (isMounted && !dataLoaded) {
+      loadBatchData();
+    }
+  }, [isMounted, loadBatchData, dataLoaded]);
+
+  // Effect for retry with delay (only runs when retryAttempt changes)
+  useEffect(() => {
+    if (retryAttempt > 0 && !dataLoaded) {
+      const retryDelay = 2000 * retryAttempt; // Increasing delay for each retry
+
+      const timeoutId = setTimeout(() => {
+        if (isMounted && !dataLoaded) {
+          loadBatchData();
+        }
+      }, retryDelay);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [retryAttempt, loadBatchData, isMounted, dataLoaded]);
 
   const handleCompleteBatch = async () => {
     if (!isMounted) return;
@@ -82,38 +167,101 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     }
   };
 
-  // Show loading state if component is still mounting or data is loading
-  if (!isMounted || batchLoading) {
-    return <div className="text-center py-10">Loading batch details...</div>;
-  }
+  const handleManualRetry = () => {
+    setDataLoaded(false);
+    setRetryAttempt(0);
+    setIsLoading(true);
+    setLoadError(null);
+    loadBatchData();
+  };
 
-  if (batchError) {
+  const handleBackToBatches = () => {
+    router.push("/batches");
+  };
+
+  // Show loading state
+  if (!isMounted || isLoading || batchLoading) {
     return (
-      <div className="text-center py-10 text-red-500">
-        <p>Error: {batchError}</p>
-        <Button onClick={() => fetchBatchById(batchId)} className="mt-4">
-          Retry
-        </Button>
+      <div className="text-center py-10">
+        <p className="mb-4">Loading batch details...</p>
+        {retryAttempt > 0 && (
+          <p className="text-sm text-gray-500">
+            Retry attempt {retryAttempt} of {MAX_RETRIES}...
+          </p>
+        )}
       </div>
     );
   }
 
-  if (!selectedBatch) {
-    return <div className="text-center py-10">Batch not found</div>;
+  // Show error state
+  if (loadError || batchError) {
+    return (
+      <div className="text-center py-10">
+        <p className="text-red-500 mb-4">Error: {loadError || batchError}</p>
+        <div className="flex flex-col items-center gap-4">
+          <Button onClick={handleManualRetry} className="w-40">
+            Retry
+          </Button>
+          <Button
+            onClick={handleBackToBatches}
+            variant="outline"
+            className="w-40"
+          >
+            Back to Batches
+          </Button>
+        </div>
+      </div>
+    );
   }
 
+  // Show not found state
+  if (!selectedBatch) {
+    return (
+      <div className="text-center py-10">
+        <p className="mb-4">Batch #{batchId} not found</p>
+        <div className="flex flex-col items-center gap-4">
+          <Button onClick={handleManualRetry} className="w-40">
+            Retry
+          </Button>
+          <Button
+            onClick={handleBackToBatches}
+            variant="outline"
+            className="w-40"
+          >
+            Back to Batches
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Get batch details from either batch report or selected batch
   const batchDetails = batchReport?.batch_details || selectedBatch;
-  const stats = getBreachStatistics(temperatureHistory);
+
+  // Initialize stats with safe defaults
+  const stats = temperatureHistory?.length
+    ? getBreachStatistics(temperatureHistory)
+    : {
+        breachCount: 0,
+        breachPercentage: 0,
+        minTemperature: 0,
+        maxTemperature: 0,
+        averageTemperature: 0,
+      };
+
+  // Get quality information
   const qualityInfo = getQualityCategory(
-    qualityAssessment?.quality_score || batchDetails.quality_score
+    qualityAssessment?.quality_score || batchDetails.quality_score || 0
   );
+
+  // Determine if batch is active
   const isActive = batchDetails.batch_status === "InTransit";
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">
-          Batch #{batchId} - {batchDetails.berry_type}
+          Batch #{batchId} - {batchDetails.berry_type || "Unknown"}
         </h1>
         <div className="flex space-x-2">
           {isActive && (
@@ -144,15 +292,15 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
               <div className="flex justify-between">
                 <span className="font-medium">Current Status:</span>
                 <span
-                  className={`px-3 py-1 rounded-full text-xs text-white bg-${
+                  className={`px-3 py-1 rounded-full text-xs text-white ${
                     batchDetails.batch_status === "InTransit"
-                      ? "blue"
+                      ? "bg-blue-500"
                       : batchDetails.batch_status === "Delivered"
-                      ? "green"
+                      ? "bg-green-500"
                       : batchDetails.batch_status === "Rejected"
-                      ? "red"
-                      : "gray"
-                  }-500`}
+                      ? "bg-red-500"
+                      : "bg-gray-500"
+                  }`}
                 >
                   {batchDetails.batch_status || "Unknown"}
                 </span>
@@ -222,7 +370,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
               <div className="flex justify-between">
                 <span className="font-medium">Readings:</span>
                 <span>
-                  {stats.breachCount} / {temperatureHistory.length}
+                  {stats.breachCount} / {temperatureHistory?.length || 0}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -260,7 +408,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
           <CardTitle>Temperature History</CardTitle>
         </CardHeader>
         <CardContent>
-          {temperatureHistory.length > 0 ? (
+          {temperatureHistory && temperatureHistory.length > 0 ? (
             <div className="h-80">
               <TemperatureChart data={temperatureHistory} />
             </div>
@@ -290,9 +438,9 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
                       Record Temperature
                     </Button>
                   </Link>
-                  <Link href={`/batches/${batchId}/complete`}>
-                    <Button size="sm">Complete Shipment</Button>
-                  </Link>
+                  <Button onClick={handleCompleteBatch} size="sm">
+                    Complete Shipment
+                  </Button>
                 </div>
               )}
             </div>
@@ -306,4 +454,5 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     </div>
   );
 };
+
 export default BatchDetailView;

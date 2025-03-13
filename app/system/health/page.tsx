@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { useSystem } from "../../../lib/hooks/useSystem";
 import HealthMetrics from "../../../components/system/HealthMetrics";
@@ -17,50 +16,90 @@ export default function SystemHealthPage() {
     loading,
     error,
   } = useSystem();
+
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   useEffect(() => {
     const loadData = async () => {
-      await fetchAgentStatus();
-      await fetchHealthMetrics();
-      setLastRefreshTime(new Date());
+      setIsRefreshing(true);
+      try {
+        // First check agent status
+        await fetchAgentStatus();
+
+        // Then fetch health metrics if agent is running
+        if (agentStatus.running) {
+          await fetchHealthMetrics();
+        }
+
+        setLastRefreshTime(new Date());
+      } catch (error) {
+        console.error("Error loading initial data:", error);
+      } finally {
+        setIsRefreshing(false);
+      }
     };
 
     loadData();
 
-    // Set up a refresh interval
+    // Set up a refresh interval - but only if we're not already refreshing
     const intervalId = setInterval(() => {
-      fetchHealthMetrics();
-      setLastRefreshTime(new Date());
+      if (!isRefreshing) {
+        fetchHealthMetrics().catch(console.error);
+        setLastRefreshTime(new Date());
+      }
     }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(intervalId);
-  }, [fetchAgentStatus, fetchHealthMetrics]);
+  }, [fetchAgentStatus, fetchHealthMetrics, agentStatus.running]);
 
   const handleRefresh = async () => {
-    await fetchHealthMetrics();
-    await fetchAgentStatus();
-    setLastRefreshTime(new Date());
+    setIsRefreshing(true);
+    try {
+      await fetchAgentStatus();
+      await fetchHealthMetrics();
+      setLastRefreshTime(new Date());
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleResetCounters = async () => {
-    await fetchHealthMetrics(true);
-    setLastRefreshTime(new Date());
+    setIsRefreshing(true);
+    try {
+      await fetchHealthMetrics(true);
+      setLastRefreshTime(new Date());
+    } catch (error) {
+      console.error("Error resetting counters:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleAgentControl = async () => {
-    if (agentStatus.running) {
-      await stopAgent();
-    } else {
-      await startAgent();
+    setIsRefreshing(true);
+    try {
+      if (agentStatus.running) {
+        await stopAgent();
+      } else {
+        await startAgent();
+      }
+      await fetchAgentStatus();
+    } catch (error) {
+      console.error("Error controlling agent:", error);
+    } finally {
+      setIsRefreshing(false);
     }
-    await fetchAgentStatus();
   };
 
-  if (loading && !healthMetrics) {
+  // Show loading indicator when initial data is loading
+  if (loading && !healthMetrics && !error) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        Loading system health data...
+      <div className="flex flex-col items-center justify-center h-screen">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
+        <p>Loading system health data...</p>
       </div>
     );
   }
@@ -76,15 +115,40 @@ export default function SystemHealthPage() {
             variant="outline"
             size="sm"
             className="ml-2"
+            disabled={isRefreshing}
           >
-            Refresh
+            {isRefreshing ? (
+              <>
+                <span className="animate-spin mr-1">⟳</span> Refreshing...
+              </>
+            ) : (
+              "Refresh"
+            )}
           </Button>
         </div>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
-          Error: {error}
+          <div className="flex items-center">
+            <svg
+              className="h-5 w-5 mr-2 text-red-500"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div>
+              <p className="font-medium">Error: {error}</p>
+              <p className="text-sm mt-1">
+                Some metrics may be unavailable or incomplete
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -117,8 +181,15 @@ export default function SystemHealthPage() {
                   ? "bg-red-500 hover:bg-red-600"
                   : "bg-green-500 hover:bg-green-600"
               }
+              disabled={isRefreshing}
             >
-              {agentStatus.running ? "Stop Agent" : "Start Agent"}
+              {isRefreshing ? (
+                <span className="animate-spin">⟳</span>
+              ) : agentStatus.running ? (
+                "Stop Agent"
+              ) : (
+                "Start Agent"
+              )}
             </Button>
           </div>
         </CardContent>

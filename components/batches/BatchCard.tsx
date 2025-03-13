@@ -13,7 +13,7 @@ import { useQuality } from "../../lib/hooks/useQuality";
 
 interface BatchCardProps {
   batch: {
-    batch_id: string | number;
+    batch_id?: string | number;
     berry_type?: string;
     batch_status?: string;
     quality_score?: number;
@@ -25,24 +25,34 @@ interface BatchCardProps {
 const BatchCard: React.FC<BatchCardProps> = ({ batch }) => {
   const { getQualityCategory } = useQuality();
 
+  // Check if batch_id is valid (not undefined, null, or "Unknown")
+  const hasValidId =
+    batch.batch_id !== undefined &&
+    batch.batch_id !== null &&
+    batch.batch_id !== "Unknown" &&
+    batch.batch_id !== "unknown";
+
   const qualityInfo = getQualityCategory(batch.quality_score);
+
   const formattedDate = batch.start_time || batch.timestamp || "Unknown date";
 
   return (
     <Card className="h-full flex flex-col">
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>Batch #{batch.batch_id}</CardTitle>
+          <CardTitle>
+            Batch #{hasValidId ? batch.batch_id : "Unknown"}
+          </CardTitle>
           <div
-            className={`px-2 py-1 rounded-full text-xs text-white bg-${
+            className={`px-2 py-1 rounded-full text-xs text-white ${
               batch.batch_status === "InTransit"
-                ? "blue"
+                ? "bg-blue-500"
                 : batch.batch_status === "Delivered"
-                ? "green"
+                ? "bg-green-500"
                 : batch.batch_status === "Rejected"
-                ? "red"
-                : "gray"
-            }-500`}
+                ? "bg-red-500"
+                : "bg-gray-500"
+            }`}
           >
             {batch.batch_status || "Unknown"}
           </div>
@@ -54,7 +64,9 @@ const BatchCard: React.FC<BatchCardProps> = ({ batch }) => {
           <div className="flex justify-between">
             <span className="text-sm font-medium">Quality Score:</span>
             <span
-              className={`text-sm font-semibold text-${qualityInfo.color}-600`}
+              className={`text-sm font-semibold ${
+                qualityInfo ? `text-${qualityInfo.color}-600` : "text-gray-600"
+              }`}
             >
               {batch.quality_score !== undefined
                 ? `${batch.quality_score}%`
@@ -73,12 +85,25 @@ const BatchCard: React.FC<BatchCardProps> = ({ batch }) => {
       </CardContent>
       <CardFooter className="border-t pt-4">
         <div className="w-full flex justify-between">
-          <Link href={`/batches/${batch.batch_id}`} passHref>
-            <Button variant="outline" size="sm" className="mr-2">
+          {hasValidId ? (
+            <Link href={`/batches/${batch.batch_id}`} passHref>
+              <Button variant="outline" size="sm" className="mr-2">
+                View Details
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mr-2 opacity-50 cursor-not-allowed"
+              disabled={true}
+              title="Batch ID is unknown"
+            >
               View Details
             </Button>
-          </Link>
-          {batch.batch_status === "InTransit" && (
+          )}
+
+          {hasValidId && batch.batch_status === "InTransit" && (
             <Link
               href={`/temperature/record?batchId=${batch.batch_id}`}
               passHref

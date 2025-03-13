@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useRouter } from "next/router";
-import { useBatch } from "../../../../lib/hooks/useBatch";
-import { useQuality } from "../../../../lib/hooks/useQuality";
+import { useRouter } from "next/navigation";
+import { useBatch } from "@/lib/hooks/useBatch";
+import { useQuality } from "@/lib/hooks/useQuality";
 import {
   Card,
   CardHeader,
@@ -12,9 +12,9 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-} from "../../../../components/ui/card";
-import { Button } from "../../../../components/ui/button";
-import QualityIndicator from "../../../../components/quality/QualityIndicator";
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import QualityIndicator from "@/components/quality/QualityIndicator";
 import TransactionStatus from "@/components/system/TranscationStatus";
 
 export default function CompleteBatchPage() {
@@ -90,7 +90,7 @@ export default function CompleteBatchPage() {
         <div className="text-center py-10 text-red-500">
           <p>Error: {batchError}</p>
           <Button onClick={() => fetchBatchById(batchId)} className="mt-4">
-            Retry
+            hello
           </Button>
         </div>
       </div>

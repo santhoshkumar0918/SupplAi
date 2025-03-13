@@ -93,9 +93,14 @@ const BatchList: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBatches.map((batch) => (
-            <BatchCard key={batch.batch_id} batch={batch} />
-          ))}
+          {filteredBatches.map((batch, index) => {
+            // Ensure each batch has a unique key by using a fallback strategy
+            const batchKey = batch.batch_id
+              ? `batch-${batch.batch_id}`
+              : `batch-index-${index}`;
+
+            return <BatchCard key={batchKey} batch={batch} />;
+          })}
         </div>
       )}
     </div>

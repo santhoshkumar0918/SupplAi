@@ -13,7 +13,7 @@ export const actionUrl = `${agentBaseUrl}/agent/action`;
 export const registeredActionUrl = `${agentBaseUrl}/agent/registered-action`;
 
 // Berry temperature monitoring endpoints
-export const monitorTemperatureUrl = `${agentBaseUrl}/agent/action`; // POST with monitor-berry-temperature
+export const monitorTemperatureUrl = `${agentBaseUrl}/agent/action`;
 export const manageBerryQualityUrl = `${agentBaseUrl}/agent/action`; // POST with manage-berry-quality
 export const processRecommendationsUrl = `${agentBaseUrl}/agent/action`; // POST with process-agent-recommendations
 
