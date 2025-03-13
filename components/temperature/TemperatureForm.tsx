@@ -90,10 +90,12 @@ const TemperatureForm: React.FC = () => {
       );
       const result = await recordTemperature(batchId, temperature, location);
 
-      if (result && isMounted) {
+      if (result && (result.success || result.status === "completed")) {
         console.log("Temperature recorded successfully:", result);
         // Only navigate if component is mounted
         router.push(`/batches/${batchId}`);
+      } else {
+        setFormError(result?.error || "Failed to record temperature");
       }
     } catch (err: any) {
       console.error("Error recording temperature:", err);
@@ -117,7 +119,7 @@ const TemperatureForm: React.FC = () => {
           {selectedBatch ? (
             <>
               Recording temperature for Batch #{batchId} -{" "}
-              {selectedBatch.berry_type}
+              {selectedBatch.berry_type || "Unknown"}
             </>
           ) : (
             <>Recording temperature for Batch #{batchId || "?"}</>
@@ -191,7 +193,7 @@ const TemperatureForm: React.FC = () => {
         <Button
           type="submit"
           onClick={handleSubmit}
-          disabled={loading || !batchId}
+          disabled={loading || !batchId || !location}
           className={isBreached ? "bg-yellow-500 hover:bg-yellow-600" : ""}
         >
           {loading
