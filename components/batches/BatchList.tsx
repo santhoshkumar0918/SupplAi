@@ -22,25 +22,17 @@ const BatchList: React.FC = () => {
   }, [fetchBatches]);
 
   useEffect(() => {
-    // Use all batches when in development mode with unknown status
     if (statusFilter === "all") {
       setFilteredBatches(batches);
     } else {
-      // In development mode, allow showing all batches with unknown as "InTransit"
       setFilteredBatches(
-        batches.filter((batch) => {
-          // For unknown status batches, include them in InTransit filter
-          if (statusFilter === "InTransit" && !batch.batch_status) {
-            return true;
-          }
-          return batch.batch_status === statusFilter;
-        })
+        batches.filter((batch) => batch.batch_status === statusFilter)
       );
     }
   }, [batches, statusFilter]);
 
   useEffect(() => {
-    // If we're here to record temperature, automatically filter to show active batches
+    // If we're here to record temperature, automatically filter to show only in-transit batches
     if (actionParam === "recordTemp") {
       setStatusFilter("InTransit");
     }
@@ -67,9 +59,9 @@ const BatchList: React.FC = () => {
     );
   }
 
-  // Count batches with InTransit status
+  // Get the count of active (in transit) batches
   const activeBatchCount = batches.filter(
-    (batch) => batch.batch_status === "InTransit" || !batch.batch_status
+    (batch) => batch.batch_status === "InTransit"
   ).length;
 
   return (
@@ -148,10 +140,9 @@ const BatchList: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredBatches.map((batch, index) => {
             // Ensure each batch has a unique key by using a fallback strategy
-            const batchKey =
-              batch.batch_id || batch.id
-                ? `batch-${batch.batch_id || batch.id}`
-                : `batch-index-${index}`;
+            const batchKey = batch.batch_id
+              ? `batch-${batch.batch_id}`
+              : `batch-index-${index}`;
 
             return <BatchCard key={batchKey} batch={batch} />;
           })}
