@@ -39,11 +39,24 @@ export default function CompleteBatchPage() {
   const [completing, setCompleting] = useState(false);
   const [transaction, setTransaction] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
-      await fetchBatchById(batchId);
-      await assessQuality(batchId);
+      console.log(`Loading data for complete batch page. Batch ID: ${batchId}`);
+      try {
+        const batchData = await fetchBatchById(batchId);
+        console.log("Batch data loaded:", batchData);
+
+        const qualityData = await assessQuality(batchId);
+        console.log("Quality data loaded:", qualityData);
+
+        setIsInitialized(true);
+      } catch (err) {
+        console.error("Error loading data:", err);
+        setError("Failed to load batch data");
+        setIsInitialized(true);
+      }
     };
 
     loadData();
@@ -54,7 +67,10 @@ export default function CompleteBatchPage() {
     setError(null);
 
     try {
+      console.log(`Completing batch ${batchId}...`);
       const result = await completeBatch(batchId);
+      console.log("Complete batch result:", result);
+
       setTransaction(result);
 
       if (result?.status === "completed" || result?.status === "redirected") {
@@ -66,6 +82,7 @@ export default function CompleteBatchPage() {
         setError(result?.error || "Failed to complete batch");
       }
     } catch (err: any) {
+      console.error("Error completing batch:", err);
       setError(err.message || "An error occurred");
     } finally {
       setCompleting(false);
@@ -76,10 +93,13 @@ export default function CompleteBatchPage() {
     router.push(`/batches/${batchId}`);
   };
 
-  if (batchLoading) {
+  if (!isInitialized || batchLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        Loading batch details...
+        <div className="text-center">
+          <p className="mb-2">Loading batch details...</p>
+          <p className="text-sm text-gray-500">Batch ID: {batchId}</p>
+        </div>
       </div>
     );
   }
@@ -90,7 +110,7 @@ export default function CompleteBatchPage() {
         <div className="text-center py-10 text-red-500">
           <p>Error: {batchError}</p>
           <Button onClick={() => fetchBatchById(batchId)} className="mt-4">
-            hello
+            Retry
           </Button>
         </div>
       </div>
@@ -114,6 +134,39 @@ export default function CompleteBatchPage() {
     qualityAssessment?.quality_score || selectedBatch.quality_score
   );
 
+  // Helper function to map status to class
+  const getStatusClass = (status: string | undefined) => {
+    switch (status) {
+      case "InTransit":
+        return "bg-blue-500";
+      case "Delivered":
+        return "bg-green-500";
+      case "Rejected":
+        return "bg-red-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
+  // Helper function to map action to class
+  const getActionTextClass = (action: string | undefined) => {
+    const color = getActionColor(action);
+    switch (color) {
+      case "green":
+        return "text-green-600";
+      case "blue":
+        return "text-blue-600";
+      case "yellow":
+        return "text-yellow-600";
+      case "orange":
+        return "text-orange-600";
+      case "red":
+        return "text-red-600";
+      default:
+        return "text-gray-600";
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
       <h1 className="text-3xl font-bold mb-8">Complete Shipment</h1>
@@ -132,15 +185,9 @@ export default function CompleteBatchPage() {
           <div className="flex justify-between items-center p-4 border rounded-md bg-gray-50">
             <span className="font-medium">Current Status:</span>
             <span
-              className={`px-3 py-1 rounded-full text-xs text-white bg-${
-                selectedBatch.batch_status === "InTransit"
-                  ? "blue"
-                  : selectedBatch.batch_status === "Delivered"
-                  ? "green"
-                  : selectedBatch.batch_status === "Rejected"
-                  ? "red"
-                  : "gray"
-              }-500`}
+              className={`px-3 py-1 rounded-full text-xs text-white ${getStatusClass(
+                selectedBatch.batch_status
+              )}`}
             >
               {selectedBatch.batch_status || "Unknown"}
             </span>
@@ -172,9 +219,9 @@ export default function CompleteBatchPage() {
               <div className="flex justify-between">
                 <span className="font-medium">Recommended Action:</span>
                 <span
-                  className={`text-${getActionColor(
+                  className={`${getActionTextClass(
                     qualityAssessment?.recommended_action
-                  )}-600 font-medium`}
+                  )} font-medium`}
                 >
                   {qualityAssessment?.recommended_action || "No Action"}
                 </span>
@@ -234,6 +281,30 @@ export default function CompleteBatchPage() {
               correct.
             </li>
           </ul>
+        </CardContent>
+      </Card>
+
+      {/* Debug Information - remove in production */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Debug Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <details>
+            <summary className="cursor-pointer text-sm text-gray-500 mb-2">
+              Show Debug Data
+            </summary>
+            <div className="text-xs overflow-auto max-h-40 p-2 bg-gray-100 rounded">
+              <div className="mb-2">
+                <strong>Selected Batch:</strong>
+                <pre>{JSON.stringify(selectedBatch, null, 2)}</pre>
+              </div>
+              <div>
+                <strong>Quality Assessment:</strong>
+                <pre>{JSON.stringify(qualityAssessment, null, 2)}</pre>
+              </div>
+            </div>
+          </details>
         </CardContent>
       </Card>
     </div>
