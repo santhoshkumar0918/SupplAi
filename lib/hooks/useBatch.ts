@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import BerrySupplyChainClient from "../api/berrySupplyChainClient";
 
 interface BatchDetails {
@@ -25,14 +25,61 @@ interface BatchReport {
   predictions?: any[];
 }
 
+// Utility to limit console logs in production
+const logger = {
+  debug: (message: string, ...args: any[]) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.debug(`[DEBUG] ${message}`, ...args);
+    }
+  },
+  info: (message: string, ...args: any[]) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[INFO] ${message}`, ...args);
+    }
+  },
+  warn: (message: string, ...args: any[]) => {
+    console.warn(`[WARN] ${message}`, ...args);
+  },
+  error: (message: string, ...args: any[]) => {
+    console.error(`[ERROR] ${message}`, ...args);
+  },
+};
+
+// Cache implementation
+const batchCache = new Map<string, any>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 export function useBatch() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [batches, setBatches] = useState<any[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<BatchDetails | null>(null);
   const [batchReport, setBatchReport] = useState<BatchReport | null>(null);
+  const [isCacheValid, setIsCacheValid] = useState<boolean>(false);
 
   const client = new BerrySupplyChainClient();
+
+  // Cache initialization
+  useEffect(() => {
+    // Check if we have cached batches and they're not expired
+    const cachedBatchesData = localStorage.getItem("cachedBatches");
+    if (cachedBatchesData) {
+      try {
+        const { data, timestamp } = JSON.parse(cachedBatchesData);
+        if (Date.now() - timestamp < CACHE_TTL) {
+          setBatches(data);
+          setIsCacheValid(true);
+          logger.info("Loaded batches from cache");
+        } else {
+          logger.info("Cache expired, will fetch fresh data");
+          localStorage.removeItem("cachedBatches");
+        }
+      } catch (err) {
+        logger.warn("Failed to parse cached batches, will fetch fresh data");
+        localStorage.removeItem("cachedBatches");
+      }
+    }
+  }, []);
 
   // Helper function to transform camelCase to snake_case
   const transformBatchResponse = (response: any): BatchDetails => {
@@ -62,12 +109,14 @@ export function useBatch() {
     setError(null);
 
     try {
-      console.log(`Creating batch with berry type: ${berryType}`);
+      logger.info(`Creating batch with berry type: ${berryType}`);
       const response = await client.createBatch(berryType);
-      console.log("Create batch API response:", response);
 
       // If there's a direct success flag
       if (response.success === true) {
+        // Invalidate cache when creating a new batch
+        setIsCacheValid(false);
+        localStorage.removeItem("cachedBatches");
         return response;
       }
 
@@ -76,11 +125,15 @@ export function useBatch() {
         response.result?.status === "completed" ||
         response.result?.status === "success"
       ) {
+        setIsCacheValid(false);
+        localStorage.removeItem("cachedBatches");
         return response.result;
       }
 
       // If there's a direct batch_id in the response
       if (response.batch_id !== undefined || response.batchId !== undefined) {
+        setIsCacheValid(false);
+        localStorage.removeItem("cachedBatches");
         return transformBatchResponse(response);
       }
 
@@ -89,11 +142,15 @@ export function useBatch() {
         response.result?.batch_id !== undefined ||
         response.result?.batchId !== undefined
       ) {
+        setIsCacheValid(false);
+        localStorage.removeItem("cachedBatches");
         return transformBatchResponse(response.result);
       }
 
       // If response itself is the result
       if (response.status === "success" || response.status === "completed") {
+        setIsCacheValid(false);
+        localStorage.removeItem("cachedBatches");
         return response;
       }
 
@@ -102,10 +159,10 @@ export function useBatch() {
         throw new Error(response.error || response.result?.error);
       }
 
-      console.warn("Unexpected response format:", response);
+      logger.warn("Unexpected response format:", response);
       return response;
     } catch (err: any) {
-      console.error("Error creating batch:", err);
+      logger.error("Error creating batch:", err);
       setError(err.message || "An error occurred while creating the batch");
       return null;
     } finally {
@@ -114,55 +171,110 @@ export function useBatch() {
   }, []);
 
   const fetchBatches = useCallback(async () => {
+    // Return cached data if valid
+    if (isCacheValid && batches.length > 0) {
+      logger.info("Using cached batches data");
+      return batches;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // For now, this is a workaround since there's no direct endpoint for listing all batches
-      // We'll fetch the last 50 batches - increase this number if needed
-      const batchData = [];
-      const maxBatchesToTry = 50;
+      // Try to fetch batches in chunks to improve performance
+      const batchIds = Array.from({ length: 50 }, (_, i) => i + 1);
+      const batchPromises = [];
+      const chunkSize = 5; // Process 5 batches at a time
 
-      for (let i = 1; i <= maxBatchesToTry; i++) {
-        try {
-          console.log(`Attempting to fetch batch ${i}`);
-          const response = await client.getBatchStatus(i.toString());
-          console.log(`Batch ${i} response:`, response);
+      // Create chunks of promises
+      for (let i = 0; i < batchIds.length; i += chunkSize) {
+        const chunk = batchIds.slice(i, i + chunkSize);
 
-          // Check for valid response in different formats
-          if (response) {
-            if (response.result) {
-              batchData.push(transformBatchResponse(response.result));
-            } else if (
-              response.batchId !== undefined ||
-              response.batch_id !== undefined
-            ) {
-              batchData.push(transformBatchResponse(response));
-            } else if (response.status === "success") {
-              batchData.push(response);
+        // Create a promise for each chunk
+        const chunkPromise = Promise.all(
+          chunk.map(async (id) => {
+            try {
+              // Check if batch is in cache first
+              const cacheKey = `batch_${id}`;
+              if (batchCache.has(cacheKey)) {
+                logger.debug(`Using cached data for batch ${id}`);
+                return batchCache.get(cacheKey);
+              }
+
+              // Otherwise fetch it
+              logger.debug(`Fetching batch ${id}`);
+              const response = await client.getBatchStatus(id.toString());
+
+              let batchData = null;
+              if (response) {
+                if (response.result) {
+                  batchData = transformBatchResponse(response.result);
+                } else if (
+                  response.batchId !== undefined ||
+                  response.batch_id !== undefined
+                ) {
+                  batchData = transformBatchResponse(response);
+                } else if (response.status === "success") {
+                  batchData = response;
+                }
+
+                // Store in cache if valid
+                if (batchData) {
+                  batchCache.set(cacheKey, batchData);
+                }
+              }
+              return batchData;
+            } catch (err) {
+              // Skip this batch if there's an error
+              return null;
             }
-          }
-        } catch (err) {
-          // Ignore errors for individual batches
-          console.log(`Skipping batch ${i} - not found or error`);
-        }
+          })
+        );
+
+        batchPromises.push(chunkPromise);
       }
 
-      console.log(`Found ${batchData.length} batches`);
+      // Process chunks sequentially to avoid overwhelming the server
+      const batchData = [];
+      for (const promise of batchPromises) {
+        const results = await promise;
+        batchData.push(...results.filter(Boolean)); // Add only non-null results
+      }
+
+      logger.info(`Found ${batchData.length} batches`);
+
+      // Sort batches by ID to ensure consistent order
+      batchData.sort((a, b) => {
+        const idA = Number(a.batch_id || a.batchId);
+        const idB = Number(b.batch_id || b.batchId);
+        return idA - idB;
+      });
+
       setBatches(batchData);
+
+      // Update cache
+      localStorage.setItem(
+        "cachedBatches",
+        JSON.stringify({
+          data: batchData,
+          timestamp: Date.now(),
+        })
+      );
+      setIsCacheValid(true);
+
       return batchData;
     } catch (err: any) {
-      console.error("Error fetching batches:", err);
+      logger.error("Error fetching batches:", err);
       setError(err.message || "An error occurred while fetching batches");
       return [];
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isCacheValid, batches]);
 
   const fetchBatchById = useCallback(async (batchId: string) => {
     if (!batchId) {
-      console.error("Invalid batch ID:", batchId);
+      logger.error("Invalid batch ID:", batchId);
       setError("Invalid batch ID provided");
       return null;
     }
@@ -171,38 +283,36 @@ export function useBatch() {
     setError(null);
 
     try {
-      console.log(`Fetching batch with ID: ${batchId}`);
+      // Check cache first
+      const cacheKey = `batch_${batchId}`;
+      if (batchCache.has(cacheKey)) {
+        const cachedBatch = batchCache.get(cacheKey);
+        logger.info(`Using cached data for batch ${batchId}`);
+        setSelectedBatch(cachedBatch);
+        return cachedBatch;
+      }
+
+      logger.info(`Fetching batch with ID: ${batchId}`);
       const response = await client.getBatchStatus(batchId);
-      console.log(`Raw response for batch ${batchId}:`, response);
+
+      let result = null;
 
       // Handle camelCase response format
       if (response?.batchId !== undefined) {
-        const transformedResponse = transformBatchResponse(response);
-        console.log(
-          `Setting selected batch from transformed response:`,
-          transformedResponse
-        );
-        setSelectedBatch(transformedResponse);
-        return transformedResponse;
+        result = transformBatchResponse(response);
       }
       // Handle other response formats
       else if (
         response?.result?.status === "completed" ||
         response?.result?.batch_id
       ) {
-        console.log(`Setting selected batch from result:`, response.result);
-        setSelectedBatch(response.result);
-        return response.result;
+        result = response.result;
       } else if (response?.batch_id || response?.berry_type) {
-        console.log(`Setting selected batch from direct response:`, response);
-        setSelectedBatch(response);
-        return response;
+        result = response;
       } else if (response?.status === "success") {
-        console.log(`Setting selected batch from success response:`, response);
-        setSelectedBatch(response);
-        return response;
+        result = response;
       } else {
-        console.error(
+        logger.error(
           `Unexpected response format for batch ${batchId}:`,
           response
         );
@@ -210,8 +320,16 @@ export function useBatch() {
           `Failed to fetch batch ${batchId} - invalid response format`
         );
       }
+
+      // Update cache
+      if (result) {
+        batchCache.set(cacheKey, result);
+        setSelectedBatch(result);
+      }
+
+      return result;
     } catch (err: any) {
-      console.error(`Error fetching batch ${batchId}:`, err);
+      logger.error(`Error fetching batch ${batchId}:`, err);
       setError(err.message || `Failed to fetch batch ${batchId}`);
       return null;
     } finally {
@@ -222,7 +340,7 @@ export function useBatch() {
   const fetchBatchReport = useCallback(
     async (batchId: string) => {
       if (!batchId) {
-        console.error("Invalid batch ID for report:", batchId);
+        logger.error("Invalid batch ID for report:", batchId);
         return { batch_details: selectedBatch || undefined };
       }
 
@@ -230,13 +348,23 @@ export function useBatch() {
       setError(null);
 
       try {
-        console.log(`Fetching report for batch ${batchId}`);
+        // Check cache first
+        const cacheKey = `batch_report_${batchId}`;
+        if (batchCache.has(cacheKey)) {
+          const cachedReport = batchCache.get(cacheKey);
+          logger.info(`Using cached report for batch ${batchId}`);
+          setBatchReport(cachedReport);
+          return cachedReport;
+        }
+
+        logger.info(`Fetching report for batch ${batchId}`);
         const response = await client.getBatchReport(batchId);
-        console.log(`Batch report response:`, response);
+
+        let reportData: BatchReport | null = null;
 
         // Handle camelCase response formats
         if (response?.batchDetails || response?.temperatureStats) {
-          const transformedReport: BatchReport = {
+          reportData = {
             batch_details: response.batchDetails
               ? transformBatchResponse(response.batchDetails)
               : undefined,
@@ -252,40 +380,37 @@ export function useBatch() {
               : undefined,
             predictions: response.predictions,
           };
-
-          console.log(`Setting transformed batch report:`, transformedReport);
-          setBatchReport(transformedReport);
-          return transformedReport;
         }
         // Handle existing response formats
         else if (
           response?.result?.status === "completed" ||
           response?.result?.batch_details
         ) {
-          console.log(`Setting batch report from result:`, response.result);
-          setBatchReport(response.result);
-          return response.result;
+          reportData = response.result;
         } else if (response?.batch_details || response?.temperature_stats) {
-          console.log(`Setting batch report from direct response:`, response);
-          setBatchReport(response);
-          return response;
+          reportData = response;
         } else if (response?.status === "success") {
-          console.log(`Setting batch report from success response:`, response);
-          setBatchReport(response);
-          return response;
+          reportData = response;
         } else {
-          console.warn(
+          logger.warn(
             `Could not find valid batch report data in response:`,
             response
           );
           // Instead of throwing, return an empty report object
-          const emptyReport: BatchReport = {
+          reportData = {
             batch_details: selectedBatch || undefined,
           };
-          return emptyReport;
         }
+
+        // Update cache and state
+        if (reportData) {
+          batchCache.set(cacheKey, reportData);
+          setBatchReport(reportData);
+        }
+
+        return reportData;
       } catch (err: any) {
-        console.error(`Error fetching batch report for ${batchId}:`, err);
+        logger.error(`Error fetching batch report for ${batchId}:`, err);
         setError(err.message || `Failed to fetch batch report for ${batchId}`);
         // Return empty report rather than null to prevent cascading failures
         const emptyReport: BatchReport = {
@@ -301,7 +426,7 @@ export function useBatch() {
 
   const completeBatch = useCallback(async (batchId: string) => {
     if (!batchId) {
-      console.error("Invalid batch ID for completion:", batchId);
+      logger.error("Invalid batch ID for completion:", batchId);
       setError("Invalid batch ID provided");
       return null;
     }
@@ -310,9 +435,14 @@ export function useBatch() {
     setError(null);
 
     try {
-      console.log(`Completing batch ${batchId}`);
+      logger.info(`Completing batch ${batchId}`);
       const response = await client.completeBatch(batchId);
-      console.log(`Complete batch response:`, response);
+
+      // Invalidate caches on batch completion
+      localStorage.removeItem("cachedBatches");
+      batchCache.delete(`batch_${batchId}`);
+      batchCache.delete(`batch_report_${batchId}`);
+      setIsCacheValid(false);
 
       // Handle different response formats
       if (
@@ -323,19 +453,27 @@ export function useBatch() {
       } else if (response?.status === "success" || response?.success === true) {
         return response;
       } else {
-        console.error(
+        logger.error(
           `Unexpected response format for completing batch ${batchId}:`,
           response
         );
         throw new Error(`Failed to complete batch ${batchId}`);
       }
     } catch (err: any) {
-      console.error(`Error completing batch ${batchId}:`, err);
+      logger.error(`Error completing batch ${batchId}:`, err);
       setError(err.message || `Failed to complete batch ${batchId}`);
       return null;
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Clear the cache
+  const clearCache = useCallback(() => {
+    batchCache.clear();
+    localStorage.removeItem("cachedBatches");
+    setIsCacheValid(false);
+    logger.info("Cache cleared");
   }, []);
 
   return {
@@ -349,5 +487,6 @@ export function useBatch() {
     fetchBatchById,
     fetchBatchReport,
     completeBatch,
+    clearCache,
   };
 }
