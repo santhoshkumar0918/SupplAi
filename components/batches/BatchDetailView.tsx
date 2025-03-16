@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import TemperatureChart from "../temperature/TemperatureChart";
 import QualityIndicator from "../quality/QualityIndicator";
 import Link from "next/link";
-import { Loader2 } from "lucide-react"; // Import loader icon
+import { Loader2 } from "lucide-react";
 
 interface BatchDetailViewProps {
   batchId: string;
@@ -43,6 +43,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [dataLoaded, setDataLoaded] = useState(false);
   const MAX_RETRIES = 3;
+  const [completing, setCompleting] = useState(false);
 
   const {
     loading: batchLoading,
@@ -63,8 +64,6 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     getQualityCategory,
     getActionColor,
   } = useQuality();
-
-  const [completing, setCompleting] = useState(false);
 
   // Initial mount effect
   useEffect(() => {
@@ -233,10 +232,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     return (
       <div className="text-center py-10">
         <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-4 mx-auto max-w-md">
-          <p className="text-red-700 mb-4">
-            {" "}
-            Error: {loadError || batchError}{" "}
-          </p>
+          <p className="text-red-700 mb-4">Error: {loadError || batchError}</p>
         </div>
         <div className="flex flex-col items-center gap-4">
           <Button onClick={handleManualRetry} className="w-40">
@@ -303,12 +299,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     batchDetails.end_time === undefined ||
     batchDetails.end_time === null;
 
-  // Memoize temperature chart data to prevent unnecessary re-renders
-  const memoizedTemperatureData = React.useMemo(
-    () => temperatureHistory,
-    [temperatureHistory]
-  );
-
+  // Rendering the main content - moved outside of any hook calls
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -476,38 +467,23 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
         </Card>
       </div>
 
-      {/* Temperature Chart - Lazy loaded */}
-      <React.Suspense
-        fallback={
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Temperature History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80 flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-        }
-      >
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Temperature History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {memoizedTemperatureData && memoizedTemperatureData.length > 0 ? (
-              <div className="h-80">
-                <TemperatureChart data={memoizedTemperatureData} />
-              </div>
-            ) : (
-              <div className="text-center py-10 text-gray-500">
-                No temperature data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </React.Suspense>
+      {/* Temperature Chart - No longer using Suspense or useMemo to fix hook order issues */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Temperature History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!temperatureHistory || temperatureHistory.length === 0 ? (
+            <div className="text-center py-10 text-gray-500">
+              No temperature data available
+            </div>
+          ) : (
+            <div className="h-80">
+              <TemperatureChart data={temperatureHistory} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Actions Card */}
       <Card className="mt-6">
@@ -544,4 +520,5 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   );
 };
 
+// Using memo is still fine, but ensure no hooks are called inside it
 export default React.memo(BatchDetailView);
