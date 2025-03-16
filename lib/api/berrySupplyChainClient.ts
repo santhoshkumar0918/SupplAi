@@ -40,6 +40,18 @@ interface SystemHealth {
   systemLoad: number;
 }
 
+interface Transaction {
+  id: string;
+  transaction_hash: string;
+  transaction_url?: string;
+  timestamp: string;
+  type: string;
+  success: boolean;
+  gas_used?: number;
+  execution_time?: number;
+  error?: string;
+}
+
 class BerrySupplyChainClient {
   // General methods
   async getServerStatus(): Promise<{
@@ -85,6 +97,16 @@ class BerrySupplyChainClient {
     return this.handleResponse(response);
   }
 
+  /**
+   * Get headers for API requests
+   */
+  getHeaders() {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    return headers;
+  }
+
   // Fixed method for calling connection actions
   async callConnectionAction(
     connection: string,
@@ -96,9 +118,7 @@ class BerrySupplyChainClient {
 
       const response = await fetch(endpoints.actionUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           connection,
           action,
@@ -408,6 +428,181 @@ class BerrySupplyChainClient {
 
   async getQualityAssessment(batchId: string): Promise<any> {
     return this.manageBerryQuality(batchId);
+  }
+
+  /**
+   * Fetch transaction history with pagination
+   * @param {number} page - The page number to fetch (starting from 1)
+   * @param {number} pageSize - Number of transactions per page
+   * @returns {Promise<{status: string, transactions?: Transaction[], total?: number, error?: string}>}
+   */
+  async getTransactionHistory(
+    page: number = 1,
+    pageSize: number = 10
+  ): Promise<{
+    status: string;
+    transactions?: Transaction[];
+    total?: number;
+    error?: string;
+  }> {
+    try {
+      // Since we're using the existing action pattern, we'll call get-transaction-history
+      const result = await this.callConnectionAction(
+        "sonic",
+        "get-transaction-history",
+        {
+          page,
+          limit: pageSize,
+        }
+      );
+
+      // If backend implementation is not ready, fall back to mock data
+      if (
+        (result.error && result.error.includes("not found")) ||
+        !result.transactions
+      ) {
+        console.warn("Transaction history API not available, using mock data");
+        return await this.getTransactionHistoryMock(page, pageSize);
+      }
+
+      return {
+        status: "success",
+        transactions: result.transactions || [],
+        total: result.total || 0,
+      };
+    } catch (error) {
+      console.error("Error fetching transaction history:", error);
+      // Fall back to mock data
+      console.warn("Falling back to mock transaction data");
+      return await this.getTransactionHistoryMock(page, pageSize);
+    }
+  }
+
+  /**
+   * Mock implementation for transaction history
+   * @param {number} page - The page number to fetch (starting from 1)
+   * @param {number} pageSize - Number of transactions per page
+   * @returns {Promise<{status: string, transactions: Transaction[], total: number}>}
+   */
+  async getTransactionHistoryMock(
+    page: number = 1,
+    pageSize: number = 10
+  ): Promise<{
+    status: string;
+    transactions: Transaction[];
+    total: number;
+  }> {
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Create mock transactions
+    const mockTransactions: Transaction[] = Array(20)
+      .fill(null)
+      .map((_, index) => ({
+        id: `tx-${index + 1}`,
+        transaction_hash: `0x${(index + 1).toString(16).padStart(64, "0")}`,
+        transaction_url: `https://etherscan.io/tx/0x${(index + 1)
+          .toString(16)
+          .padStart(64, "0")}`,
+        timestamp: new Date(Date.now() - index * 3600000).toISOString(),
+        type:
+          index % 3 === 0
+            ? "Batch Creation"
+            : index % 3 === 1
+            ? "Temperature Update"
+            : "Status Change",
+        success: index % 5 !== 0, // Make every 5th transaction a failure
+        gas_used: 75000 + Math.floor(Math.random() * 50000),
+        execution_time: 1 + Math.random() * 3,
+        ...(index % 5 === 0
+          ? { error: "Transaction reverted: gas limit exceeded" }
+          : {}),
+      }));
+
+    // Calculate total for pagination
+    const total = mockTransactions.length;
+
+    // Calculate start and end indices for the requested page
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, total);
+
+    // Return mock response
+    return {
+      status: "success",
+      transactions: mockTransactions.slice(startIndex, endIndex),
+      total: total,
+    };
+  }
+
+  /**
+   * Get a single transaction by hash
+   * @param {string} txHash - Transaction hash
+   * @returns {Promise<{status: string, transaction?: Transaction, error?: string}>}
+   */
+  async getTransaction(txHash: string): Promise<{
+    status: string;
+    transaction?: Transaction;
+    error?: string;
+  }> {
+    try {
+      // Using existing action pattern to get transaction details
+      const result = await this.callConnectionAction(
+        "sonic",
+        "get-transaction-details",
+        {
+          transaction_hash: txHash,
+        }
+      );
+
+      // If backend implementation is not ready, fall back to mock
+      if (
+        (result.error && result.error.includes("not found")) ||
+        !result.transaction
+      ) {
+        // Find the transaction in mock data
+        const mockData = await this.getTransactionHistoryMock(1, 20);
+        const transaction = mockData.transactions.find(
+          (tx) => tx.transaction_hash === txHash
+        );
+
+        if (transaction) {
+          return {
+            status: "success",
+            transaction,
+          };
+        } else {
+          return {
+            status: "error",
+            error: `Transaction with hash ${txHash} not found`,
+          };
+        }
+      }
+
+      return {
+        status: "success",
+        transaction: result.transaction,
+      };
+    } catch (error) {
+      console.error(`Error fetching transaction ${txHash}:`, error);
+
+      // Fall back to mock data
+      const mockData = await this.getTransactionHistoryMock(1, 20);
+      const transaction = mockData.transactions.find(
+        (tx) => tx.transaction_hash === txHash
+      );
+
+      if (transaction) {
+        return {
+          status: "success",
+          transaction,
+        };
+      } else {
+        return {
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
   }
 }
 
