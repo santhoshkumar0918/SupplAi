@@ -37,7 +37,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({
   maxOptimal = 4,
 }) => {
   // If the timestamp is a number, convert to a date string
-  const formattedData = data.map((reading) => {
+  const formattedData = data.map((reading, idx) => {
     let formattedTimestamp = reading.timestamp;
 
     if (typeof reading.timestamp === "number") {
@@ -47,6 +47,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({
     return {
       ...reading,
       formattedTimestamp,
+      id: idx, // Add id for keying in the chart
     };
   });
 
@@ -90,6 +91,36 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({
       );
     }
     return null;
+  };
+
+  // Define custom dot function that never returns null to satisfy TypeScript
+  const renderDot = (props: any) => {
+    // If props or payload are undefined, return an invisible circle
+    if (!props || !props.payload) {
+      return (
+        <circle
+          key="fallback-dot"
+          cx={0}
+          cy={0}
+          r={0}
+          fill="none"
+          stroke="none"
+        />
+      );
+    }
+
+    const { cx, cy, payload, index } = props;
+    return (
+      <circle
+        key={`temp-dot-${payload.id || index}`}
+        cx={cx}
+        cy={cy}
+        r={4}
+        stroke="#2563eb"
+        strokeWidth={2}
+        fill={payload.isBreached ? "#ef4444" : "#fff"}
+      />
+    );
   };
 
   return (
@@ -142,24 +173,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({
           stroke="#2563eb"
           activeDot={{ r: 8 }}
           strokeWidth={2}
-          dot={(props: any) => {
-            // Early return if props or payload is undefined
-            if (!props || !props.payload) {
-              return <circle />; // This circle has no key
-            }
-
-            const { cx, cy, payload } = props;
-            return (
-              <circle // This circle also has no key
-                cx={cx}
-                cy={cy}
-                r={4}
-                stroke="#2563eb"
-                strokeWidth={2}
-                fill={payload.isBreached ? "#ef4444" : "#fff"}
-              />
-            );
-          }}
+          dot={renderDot}
         />
       </LineChart>
     </ResponsiveContainer>
