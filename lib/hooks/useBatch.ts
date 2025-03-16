@@ -359,11 +359,28 @@ export function useBatch() {
 
         logger.info(`Fetching report for batch ${batchId}`);
         const response = await client.getBatchReport(batchId);
+        logger.debug(`Batch report response:`, response);
 
         let reportData: BatchReport | null = null;
 
+        // Handle the specific response format with success, batch_id, and report
+        if (response?.success === true && response?.report) {
+          reportData = {
+            batch_details: response.report.batch_details
+              ? transformBatchResponse(response.report.batch_details)
+              : transformBatchResponse({ batch_id: response.batch_id }),
+            temperature_stats: {
+              reading_count: response.report.reading_count || 0,
+              readings: response.report.temperature_history || [],
+            },
+          };
+          logger.info(
+            `Processed batch report with nested 'report' structure:`,
+            reportData
+          );
+        }
         // Handle camelCase response formats
-        if (response?.batchDetails || response?.temperatureStats) {
+        else if (response?.batchDetails || response?.temperatureStats) {
           reportData = {
             batch_details: response.batchDetails
               ? transformBatchResponse(response.batchDetails)
