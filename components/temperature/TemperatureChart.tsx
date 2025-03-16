@@ -12,18 +12,30 @@ import {
   TooltipProps,
 } from "recharts";
 
+// Define the types for our data
 interface TemperatureReading {
   timestamp: string | number;
   temperature: number;
   location?: string;
   isBreached?: boolean;
+  formattedTimestamp?: string;
 }
 
 interface TemperatureChartProps {
   data: TemperatureReading[];
+  minOptimal?: number;
+  maxOptimal?: number;
 }
 
-const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
+// Define the ValueType and NameType for Recharts types
+type ValueType = number;
+type NameType = string;
+
+const TemperatureChart: React.FC<TemperatureChartProps> = ({
+  data,
+  minOptimal = 0,
+  maxOptimal = 4,
+}) => {
   // If the timestamp is a number, convert to a date string
   const formattedData = data.map((reading) => {
     let formattedTimestamp = reading.timestamp;
@@ -38,9 +50,47 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
     };
   });
 
-  const maxTemp = Math.ceil(Math.max(...data.map((item) => item.temperature)));
-  const minTemp = Math.floor(Math.min(...data.map((item) => item.temperature)));
+  const maxTemp =
+    data.length > 0
+      ? Math.ceil(Math.max(...data.map((item) => item.temperature)))
+      : 5;
+  const minTemp =
+    data.length > 0
+      ? Math.floor(Math.min(...data.map((item) => item.temperature)))
+      : -1;
   const yDomain = [Math.min(minTemp - 1, -1), Math.max(maxTemp + 1, 5)];
+
+  // Custom tooltip component with proper typing
+  const CustomTooltip = ({
+    active,
+    payload,
+    label,
+  }: TooltipProps<ValueType, NameType>) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload as TemperatureReading;
+      return (
+        <div className="bg-white p-3 border rounded shadow-lg">
+          <p className="text-gray-600 text-sm">{label}</p>
+          <p className="text-blue-600 font-medium">
+            {`${
+              typeof payload[0].value === "number"
+                ? payload[0].value.toFixed(1)
+                : payload[0].value
+            }°C`}
+          </p>
+          {data.location && (
+            <p className="text-gray-500 text-xs">
+              {`Location: ${data.location}`}
+            </p>
+          )}
+          {data.isBreached && (
+            <p className="text-red-500 text-xs">Temperature breach detected</p>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -69,49 +119,21 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
           }}
           domain={yDomain}
         />
-        <Tooltip
-          content={({
-            active,
-            payload,
-            label,
-          }: TooltipProps<number, string>) => {
-            if (active && payload && payload.length) {
-              return (
-                <div className="bg-white p-3 border rounded shadow-lg">
-                  <p className="text-gray-600 text-sm">{label}</p>
-                  <p className="text-blue-600 font-medium">{`${
-                    typeof payload[0].value === "number"
-                      ? payload[0].value.toFixed(1)
-                      : payload[0].value
-                  }°C`}</p>
-                  {payload[0].payload.location && (
-                    <p className="text-gray-500 text-xs">{`Location: ${payload[0].payload.location}`}</p>
-                  )}
-                  {payload[0].payload.isBreached && (
-                    <p className="text-red-500 text-xs">
-                      Temperature breach detected
-                    </p>
-                  )}
-                </div>
-              );
-            }
-            return null;
-          }}
-        />
+        <Tooltip content={CustomTooltip} />
         <Legend />
 
         {/* Reference lines for optimal temperature range */}
         <ReferenceLine
-          y={0}
+          y={minOptimal}
           stroke="orange"
           strokeDasharray="3 3"
-          label="Min Optimal (0°C)"
+          label={`Min Optimal (${minOptimal}°C)`}
         />
         <ReferenceLine
-          y={4}
+          y={maxOptimal}
           stroke="orange"
           strokeDasharray="3 3"
-          label="Max Optimal (4°C)"
+          label={`Max Optimal (${maxOptimal}°C)`}
         />
 
         <Line
@@ -120,10 +142,15 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
           stroke="#2563eb"
           activeDot={{ r: 8 }}
           strokeWidth={2}
-          dot={(props) => {
+          dot={(props: any) => {
+            // Early return if props or payload is undefined
+            if (!props || !props.payload) {
+              return <circle />; // This circle has no key
+            }
+
             const { cx, cy, payload } = props;
             return (
-              <circle
+              <circle // This circle also has no key
                 cx={cx}
                 cy={cy}
                 r={4}
