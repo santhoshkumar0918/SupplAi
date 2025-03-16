@@ -9,10 +9,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import TemperatureChart from "../temperature/TemperatureChart";
 import QualityIndicator from "../quality/QualityIndicator";
 import Link from "next/link";
+import { Loader2 } from "lucide-react"; // Import loader icon
 
 interface BatchDetailViewProps {
   batchId: string;
 }
+
+// Utility logger for consistent logging
+const logger = {
+  debug: (message: string, ...args: any[]) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.debug(`[BatchDetailView] ${message}`, ...args);
+    }
+  },
+  info: (message: string, ...args: any[]) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[BatchDetailView] ${message}`, ...args);
+    }
+  },
+  warn: (message: string, ...args: any[]) => {
+    console.warn(`[BatchDetailView] ${message}`, ...args);
+  },
+  error: (message: string, ...args: any[]) => {
+    console.error(`[BatchDetailView] ${message}`, ...args);
+  },
+};
 
 const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   const router = useRouter();
@@ -53,11 +74,11 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     };
   }, []);
 
-  // Load data function (defined outside useEffect to prevent recreation)
+  // Load data function with optimized promise handling
   const loadBatchData = useCallback(async () => {
-    if (!isMounted || dataLoaded) return;
+    if (!isMounted || dataLoaded) return false;
 
-    console.log(
+    logger.info(
       `Loading data for batch ID: ${batchId} (Attempt ${
         retryAttempt + 1
       }/${MAX_RETRIES})`
@@ -66,23 +87,20 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     setLoadError(null);
 
     try {
-      // Try to fetch the batch data
-      console.log(`Fetching batch with ID: ${batchId}`);
+      // Fetch the batch data first
+      logger.debug(`Fetching batch with ID: ${batchId}`);
       const batchResult = await fetchBatchById(batchId);
 
-      console.log("Batch result:", batchResult); // Debug log
-
-      // If batch fetch failed and we haven't exceeded max retries
       if (!batchResult) {
         if (retryAttempt < MAX_RETRIES - 1) {
-          console.log(
+          logger.info(
             `Batch fetch failed, will retry in ${
               2000 * (retryAttempt + 1)
             }ms...`
           );
           setRetryAttempt((prev) => prev + 1);
           setIsLoading(false);
-          return;
+          return false;
         } else {
           throw new Error(
             `Failed to fetch batch with ID ${batchId} after ${MAX_RETRIES} attempts`
@@ -90,30 +108,44 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
         }
       }
 
-      // Fetch additional data
-      console.log(
+      // Once we have the batch, fetch the rest in parallel
+      logger.debug(
         `Successfully fetched batch ${batchId}, fetching additional data...`
       );
 
-      // Use Promise.all to fetch all related data in parallel
-      await Promise.all([
+      // Use Promise.allSettled to handle partial failures gracefully
+      const results = await Promise.allSettled([
         fetchBatchReport(batchId),
         fetchTemperatureHistory(batchId),
         assessQuality(batchId),
       ]);
 
-      // Mark data as loaded to prevent further fetches
+      // Check results and log any partial failures
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          const endpoints = [
+            "batch report",
+            "temperature history",
+            "quality assessment",
+          ];
+          logger.warn(`Failed to fetch ${endpoints[index]}: ${result.reason}`);
+        }
+      });
+
+      // Mark data as loaded regardless of partial failures
       setDataLoaded(true);
       setIsLoading(false);
       setLoadError(null);
+      return true;
     } catch (error) {
-      console.error("Error loading batch data:", error);
+      logger.error("Error loading batch data:", error);
       setLoadError(
         error instanceof Error
           ? error.message
           : "Unknown error loading batch data"
       );
       setIsLoading(false);
+      return false;
     }
   }, [
     batchId,
@@ -161,7 +193,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
           router.push("/batches");
         }
       } catch (error) {
-        console.error("Error completing batch:", error);
+        logger.error("Error completing batch:", error);
         alert("Error completing batch. See console for details.");
       } finally {
         setCompleting(false);
@@ -181,20 +213,12 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     router.push("/batches");
   };
 
-  // Debug logs - Add these to help diagnose the issue
-  useEffect(() => {
-    console.log("Selected Batch:", selectedBatch);
-    console.log("Batch Report:", batchReport);
-    console.log("Is Loading:", isLoading);
-    console.log("Batch Loading:", batchLoading);
-    console.log("Data Loaded:", dataLoaded);
-  }, [selectedBatch, batchReport, isLoading, batchLoading, dataLoaded]);
-
-  // Show loading state
+  // Show loading state with improved UI feedback
   if (!isMounted || isLoading || batchLoading) {
     return (
       <div className="text-center py-10">
-        <p className="mb-4">Loading batch details...</p>
+        <Loader2 className="w-10 h-10 animate-spin mx-auto mb-4 text-blue-500" />
+        <p className="mb-4 font-medium">Loading batch details...</p>
         {retryAttempt > 0 && (
           <p className="text-sm text-gray-500">
             Retry attempt {retryAttempt} of {MAX_RETRIES}...
@@ -208,7 +232,12 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   if (loadError || batchError) {
     return (
       <div className="text-center py-10">
-        <p className="text-red-500 mb-4">Error: {loadError || batchError}</p>
+        <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-4 mx-auto max-w-md">
+          <p className="text-red-700 mb-4">
+            {" "}
+            Error: {loadError || batchError}{" "}
+          </p>
+        </div>
         <div className="flex flex-col items-center gap-4">
           <Button onClick={handleManualRetry} className="w-40">
             Retry
@@ -229,7 +258,9 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   if (!selectedBatch) {
     return (
       <div className="text-center py-10">
-        <p className="mb-4">Batch #{batchId} not found</p>
+        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-4 mx-auto max-w-md">
+          <p className="mb-4 text-yellow-700">Batch #{batchId} not found</p>
+        </div>
         <div className="flex flex-col items-center gap-4">
           <Button onClick={handleManualRetry} className="w-40">
             Retry
@@ -248,8 +279,6 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
 
   // Get batch details from either batch report or selected batch
   const batchDetails = batchReport?.batch_details || selectedBatch;
-
-  console.log("Final Batch Details:", batchDetails); // Debug log
 
   // Initialize stats with safe defaults
   const stats = temperatureHistory?.length
@@ -273,6 +302,12 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
     batchDetails.is_active === true ||
     batchDetails.end_time === undefined ||
     batchDetails.end_time === null;
+
+  // Memoize temperature chart data to prevent unnecessary re-renders
+  const memoizedTemperatureData = React.useMemo(
+    () => temperatureHistory,
+    [temperatureHistory]
+  );
 
   return (
     <div className="space-y-6">
@@ -315,7 +350,7 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
                       : batchDetails.batch_status === "Delivered"
                       ? "bg-green-500"
                       : batchDetails.batch_status === "Rejected"
-                      ? " bg-red-500"
+                      ? "bg-red-500"
                       : isActive
                       ? "bg-blue-500"
                       : "bg-gray-500"
@@ -441,23 +476,38 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
         </Card>
       </div>
 
-      {/* Temperature Chart */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Temperature History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {temperatureHistory && temperatureHistory.length > 0 ? (
-            <div className="h-80">
-              <TemperatureChart data={temperatureHistory} />
-            </div>
-          ) : (
-            <div className="text-center py-10 text-gray-500">
-              No temperature data available
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Temperature Chart - Lazy loaded */}
+      <React.Suspense
+        fallback={
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Temperature History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+        }
+      >
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Temperature History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {memoizedTemperatureData && memoizedTemperatureData.length > 0 ? (
+              <div className="h-80">
+                <TemperatureChart data={memoizedTemperatureData} />
+              </div>
+            ) : (
+              <div className="text-center py-10 text-gray-500">
+                No temperature data available
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </React.Suspense>
 
       {/* Actions Card */}
       <Card className="mt-6">
@@ -494,4 +544,4 @@ const BatchDetailView: React.FC<BatchDetailViewProps> = ({ batchId }) => {
   );
 };
 
-export default BatchDetailView;
+export default React.memo(BatchDetailView);
