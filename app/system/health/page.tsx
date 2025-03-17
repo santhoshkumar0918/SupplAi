@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { useSystem } from "../../../lib/hooks/useSystem";
 import HealthMetrics from "../../../components/system/HealthMetrics";
+import TransactionHistory from "../../../components/system/TransactionHistory";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "../../../components/ui/button";
+import BerrySupplyChainClient from "../../../lib/api/berrySupplyChainClient";
 
 export default function SystemHealthPage() {
   const {
@@ -19,6 +21,10 @@ export default function SystemHealthPage() {
 
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(error);
+
+  // Create an instance of the client for the TransactionHistory component
+  const client = new BerrySupplyChainClient();
 
   useEffect(() => {
     const loadData = async () => {
@@ -94,6 +100,10 @@ export default function SystemHealthPage() {
     }
   };
 
+  const handleError = (error: string) => {
+    setErrorMessage(error);
+  };
+
   // Show loading indicator when initial data is loading
   if (loading && !healthMetrics && !error) {
     return (
@@ -128,7 +138,7 @@ export default function SystemHealthPage() {
         </div>
       </div>
 
-      {error && (
+      {errorMessage && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
           <div className="flex items-center">
             <svg
@@ -143,7 +153,7 @@ export default function SystemHealthPage() {
               />
             </svg>
             <div>
-              <p className="font-medium">Error: {error}</p>
+              <p className="font-medium">Error: {errorMessage}</p>
               <p className="text-sm mt-1">
                 Some metrics may be unavailable or incomplete
               </p>
@@ -203,21 +213,7 @@ export default function SystemHealthPage() {
       />
 
       {/* Transaction History */}
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Transaction History</h2>
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-6 text-gray-500">
-              Transaction history viewer coming soon
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <TransactionHistory client={client} onError={handleError} />
     </div>
   );
 }
-
-

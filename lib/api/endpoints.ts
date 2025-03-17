@@ -32,3 +32,7 @@ export const healthCheckUrl = `${agentBaseUrl}/agent/action`; // POST with syste
 // Agent control endpoints
 export const startAgentUrl = `${agentBaseUrl}/agent/start`;
 export const stopAgentUrl = `${agentBaseUrl}/agent/stop`;
+
+// Transaction history endpoints (using existing API action pattern)
+export const getTransactionsActionUrl = `${agentBaseUrl}/agent/action`; // POST with get-transaction-history action
+export const getTransactionActionUrl = `${agentBaseUrl}/agent/action`; // POST with get-transaction-details action
