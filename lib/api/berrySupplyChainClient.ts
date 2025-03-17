@@ -184,6 +184,55 @@ class BerrySupplyChainClient {
     }
   }
 
+  // Call registered action method
+  async perform_registered_action(
+    action: string,
+    params: Record<string, any> = {}
+  ): Promise<any> {
+    try {
+      console.log(`Calling registered action ${action} with params:`, params);
+
+      const response = await fetch(endpoints.registeredActionUrl, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          connection: "registered", // This value doesn't matter for registered actions
+          action,
+          params,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = "";
+        try {
+          const errorData = await response.json();
+          errorMessage =
+            errorData?.detail ||
+            `API request failed: ${response.status} ${response.statusText}`;
+        } catch (parseError) {
+          errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const responseData = await response.json();
+
+      // Handle different response formats
+      if (responseData.result) {
+        return responseData.result;
+      }
+
+      return responseData;
+    } catch (error) {
+      console.error(`Error calling registered action ${action}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   // Berry temperature monitoring methods
   async monitorTemperature(
     batchId: string,
@@ -446,9 +495,8 @@ class BerrySupplyChainClient {
     error?: string;
   }> {
     try {
-      // Since we're using the existing action pattern, we'll call get-transaction-history
-      const result = await this.callConnectionAction(
-        "sonic",
+      // Use the registered action instead of connection action
+      const result = await this.perform_registered_action(
         "get-transaction-history",
         {
           page,
@@ -456,12 +504,11 @@ class BerrySupplyChainClient {
         }
       );
 
+      console.log("Transaction history result:", result);
+
       // If backend implementation is not ready, fall back to mock data
-      if (
-        (result.error && result.error.includes("not found")) ||
-        !result.transactions
-      ) {
-        console.warn("Transaction history API not available, using mock data");
+      if (result.error || !result.transactions) {
+        console.warn("Transaction history API returned error, using mock data");
         return await this.getTransactionHistoryMock(page, pageSize);
       }
 
@@ -545,9 +592,8 @@ class BerrySupplyChainClient {
     error?: string;
   }> {
     try {
-      // Using existing action pattern to get transaction details
-      const result = await this.callConnectionAction(
-        "sonic",
+      // Use the registered action instead of connection action
+      const result = await this.perform_registered_action(
         "get-transaction-details",
         {
           transaction_hash: txHash,
@@ -555,10 +601,7 @@ class BerrySupplyChainClient {
       );
 
       // If backend implementation is not ready, fall back to mock
-      if (
-        (result.error && result.error.includes("not found")) ||
-        !result.transaction
-      ) {
+      if (result.error || !result.transaction) {
         // Find the transaction in mock data
         const mockData = await this.getTransactionHistoryMock(1, 20);
         const transaction = mockData.transactions.find(
