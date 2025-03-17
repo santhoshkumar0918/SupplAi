@@ -405,13 +405,99 @@ class BerrySupplyChainClient {
     return result;
   }
 
-  // System health method
   async getSystemHealth(resetCounters: boolean = false): Promise<any> {
-    return this.callConnectionAction("sonic", "system-health-check", {
-      reset_counters: resetCounters,
-    });
-  }
+    try {
+      console.log("Calling sonic.system-health-check with params:", {
+        reset_counters: resetCounters,
+      });
 
+      const response = await this.callConnectionAction(
+        "sonic",
+        "system-health-check",
+        {
+          reset_counters: resetCounters,
+        }
+      );
+
+      // Log the raw response for debugging
+      console.log("Raw system health check response:", response);
+
+      // Normalize the response format for better consistency
+      let normalizedResponse: {
+        status: string;
+        health_report?: any;
+        result?: any;
+        error?: string;
+      } = {
+        status: "success",
+      };
+
+      // Handle different response formats
+      if (response.health_report) {
+        // Response already has health_report at top level
+        normalizedResponse = {
+          ...normalizedResponse,
+          health_report: response.health_report,
+        };
+      } else if (response.result?.health_report) {
+        // Response has health_report in result object
+        normalizedResponse = {
+          ...normalizedResponse,
+          health_report: response.result.health_report,
+        };
+      } else if (response.result?.report?.health_metrics) {
+        // Response has health metrics in nested report object
+        normalizedResponse = {
+          ...normalizedResponse,
+          health_report: response.result.report.health_metrics,
+        };
+      } else if (typeof response === "object") {
+        // Try to identify if the response itself contains health metrics
+        const metricsFields = [
+          "is_connected",
+          "contract_accessible",
+          "account_balance",
+          "transaction_count",
+          "successful_transactions",
+          "failed_transactions",
+        ];
+
+        // Check if response or response.result has metric fields directly
+        const sourceObj = metricsFields.some(
+          (field) => response[field] !== undefined
+        )
+          ? response
+          : metricsFields.some(
+              (field) => response.result?.[field] !== undefined
+            )
+          ? response.result
+          : null;
+
+        if (sourceObj) {
+          // Create health_report from the source object
+          normalizedResponse = {
+            ...normalizedResponse,
+            health_report: { ...sourceObj },
+          };
+        } else {
+          // If we can't identify health metrics, pass through the original response
+          normalizedResponse = {
+            ...normalizedResponse,
+            result: response,
+            error: "Could not extract health metrics from response",
+          };
+        }
+      }
+
+      return normalizedResponse;
+    } catch (error) {
+      console.error("Error in getSystemHealth:", error);
+      return {
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   // Agent control methods
   async startAgent(): Promise<{ status: string; message: string }> {
     try {

@@ -29,15 +29,13 @@ interface AgentActionResponse {
   message: string;
 }
 
+// Updated interface to match actual API response format
 interface HealthMetricsResponse {
-  status: string;
-  result?: {
-    status: string;
-    health_report?: SystemHealthMetrics;
-    error?: string;
-  };
+  status?: string;
+  result?: any; // More flexible typing to handle various response structures
   health_report?: SystemHealthMetrics;
   error?: string;
+  success?: boolean;
 }
 
 export function useSystem() {
@@ -65,54 +63,78 @@ export function useSystem() {
           "Fetching health metrics...",
           resetCounters ? "(resetting counters)" : ""
         );
-        const response = (await client.getSystemHealth(
-          resetCounters
-        )) as HealthMetricsResponse;
 
-        console.log("Health metrics response:", response);
+        // Get raw response from the API
+        const response = await client.getSystemHealth(resetCounters);
 
-        // Handle different possible response formats
-        if (
-          response?.result?.status === "completed" &&
-          response.result.health_report
-        ) {
-          console.log("Setting health metrics from result.health_report");
-          setHealthMetrics(response.result.health_report);
-          return response.result.health_report;
+        // Log the entire response for debugging
+        console.log(
+          "Raw health metrics response:",
+          JSON.stringify(response, null, 2)
+        );
+
+        // Try to extract health metrics from various possible paths in the response
+        let extractedMetrics: SystemHealthMetrics | null = null;
+
+        // Check all possible paths where health metrics might be located
+        if (response?.result?.health_report) {
+          console.log("Found health_report in result.health_report");
+          extractedMetrics = response.result.health_report;
         } else if (response?.health_report) {
-          console.log("Setting health metrics from direct health_report");
-          setHealthMetrics(response.health_report);
-          return response.health_report;
-        } else {
-          // Even if we fail to get proper metrics, set some default values
-          // This prevents the UI from showing an error when some data is available
-          const fallbackMetrics: SystemHealthMetrics = {
-            timestamp: new Date().toISOString(),
-            is_connected: false,
-            contract_accessible: false,
-            account_balance: "Unknown",
-            transaction_count: 0,
-            successful_transactions: 0,
-            failed_transactions: 0,
-            transaction_success_rate: "0%",
-            temperature_breaches: 0,
-            critical_breaches: 0,
-            warning_breaches: 0,
-            batches_created: 0,
-            batches_completed: 0,
-            ...extractAnyMetricsFrom(response),
-          };
-
-          console.log("Setting fallback health metrics");
-          setHealthMetrics(fallbackMetrics);
-
-          // Still throw an error so the UI can show a message
-          throw new Error(
-            response?.result?.error ||
-              response?.error ||
-              "Failed to fetch complete system health metrics"
-          );
+          console.log("Found direct health_report");
+          extractedMetrics = response.health_report;
+        } else if (response?.result?.report?.health_metrics) {
+          console.log("Found health_metrics in result.report");
+          extractedMetrics = response.result.report.health_metrics;
+        } else if (response?.result) {
+          // If metrics are directly in the result object
+          console.log("Checking for metrics directly in result object");
+          extractedMetrics = extractFieldsAsHealthMetrics(response.result);
+        } else if (response) {
+          // Last resort: try to extract metrics from the top-level response
+          console.log("Checking for metrics in top-level response");
+          extractedMetrics = extractFieldsAsHealthMetrics(response);
         }
+
+        if (extractedMetrics && hasMinimumRequiredFields(extractedMetrics)) {
+          console.log(
+            "Successfully extracted health metrics:",
+            extractedMetrics
+          );
+          setHealthMetrics(extractedMetrics);
+          return extractedMetrics;
+        }
+
+        // If we reach here, we couldn't extract valid metrics
+        console.log("Could not extract valid health metrics, using fallback");
+
+        // Create fallback metrics
+        const fallbackMetrics: SystemHealthMetrics = {
+          timestamp: new Date().toISOString(),
+          is_connected: false,
+          contract_accessible: false,
+          account_balance: "Unknown",
+          transaction_count: 0,
+          successful_transactions: 0,
+          failed_transactions: 0,
+          transaction_success_rate: "0%",
+          temperature_breaches: 0,
+          critical_breaches: 0,
+          warning_breaches: 0,
+          batches_created: 0,
+          batches_completed: 0,
+          // Merge any metrics we could extract
+          ...extractAnyMetricsFrom(response),
+        };
+
+        console.log("Using fallback health metrics:", fallbackMetrics);
+        setHealthMetrics(fallbackMetrics);
+
+        // Throw an error for UI notification, but don't break the app
+        const errorMsg =
+          getErrorMessage(response) ||
+          "Failed to fetch complete system health metrics";
+        throw new Error(errorMsg);
       } catch (err: any) {
         console.error("Error fetching health metrics:", err);
         setError(
@@ -120,14 +142,66 @@ export function useSystem() {
             "An error occurred while fetching system health metrics"
         );
 
-        // Return an empty metrics object to prevent UI from crashing
+        // Return the current metrics to prevent UI from crashing
         return healthMetrics || {};
       } finally {
         setLoading(false);
       }
     },
-    []
+    [healthMetrics]
   );
+
+  // Helper function to check if we have minimum required fields for valid metrics
+  const hasMinimumRequiredFields = (metrics: any): boolean => {
+    // Define which fields are required for metrics to be considered valid
+    const requiredFields = ["is_connected", "contract_accessible"];
+
+    // Check if at least some of the required fields exist
+    return requiredFields.some((field) => metrics[field] !== undefined);
+  };
+
+  // Helper function to extract error message from response
+  const getErrorMessage = (response: any): string | null => {
+    if (response?.error) return response.error;
+    if (response?.result?.error) return response.result.error;
+    if (
+      typeof response?.result === "string" &&
+      response.result.includes("error")
+    )
+      return response.result;
+    return null;
+  };
+
+  // Helper function to extract fields as health metrics
+  const extractFieldsAsHealthMetrics = (obj: any): SystemHealthMetrics => {
+    if (!obj || typeof obj !== "object") return {};
+
+    const metrics: SystemHealthMetrics = {};
+    const metricFields: (keyof SystemHealthMetrics)[] = [
+      "is_connected",
+      "contract_accessible",
+      "account_balance",
+      "transaction_count",
+      "successful_transactions",
+      "failed_transactions",
+      "transaction_success_rate",
+      "temperature_breaches",
+      "critical_breaches",
+      "warning_breaches",
+      "batches_created",
+      "batches_completed",
+      "timestamp",
+    ];
+
+    // Extract any matching fields
+    metricFields.forEach((field) => {
+      if (obj[field] !== undefined) {
+        metrics[field] = obj[field];
+      }
+    });
+
+    return metrics;
+  };
 
   // Helper function to extract any metrics data from a partial/failed response
   const extractAnyMetricsFrom = (
@@ -137,35 +211,41 @@ export function useSystem() {
 
     const metrics: Partial<SystemHealthMetrics> = {};
 
-    // Try to extract any valid metrics from various possible paths in the response
+    // Try to extract metrics from various possible paths
     if (response.result?.health_report) {
       Object.assign(metrics, response.result.health_report);
     } else if (response.health_report) {
       Object.assign(metrics, response.health_report);
+    } else if (response.result?.report?.health_metrics) {
+      Object.assign(metrics, response.result.report.health_metrics);
     }
 
-    // Try to extract individual fields from various possible paths
-    const extractField = (fieldName: keyof SystemHealthMetrics) => {
-      if (response[fieldName] !== undefined)
-        metrics[fieldName] = response[fieldName];
-      if (response.result?.[fieldName] !== undefined)
-        metrics[fieldName] = response.result[fieldName];
-    };
-
-    // Try to extract specific fields
-    [
+    // Direct extraction of fields from various paths
+    const metricFields: (keyof SystemHealthMetrics)[] = [
       "is_connected",
       "contract_accessible",
       "account_balance",
       "transaction_count",
       "successful_transactions",
       "failed_transactions",
+      "transaction_success_rate",
       "temperature_breaches",
       "critical_breaches",
       "warning_breaches",
       "batches_created",
       "batches_completed",
-    ].forEach((field) => extractField(field as keyof SystemHealthMetrics));
+      "timestamp",
+    ];
+
+    // Try to extract fields from various paths
+    metricFields.forEach((field) => {
+      // Check various paths for each field
+      if (response[field] !== undefined) metrics[field] = response[field];
+      if (response.result?.[field] !== undefined)
+        metrics[field] = response.result[field];
+      if (response.result?.report?.[field] !== undefined)
+        metrics[field] = response.result.report[field];
+    });
 
     return metrics;
   };
