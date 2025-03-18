@@ -52,6 +52,33 @@ interface Transaction {
   error?: string;
 }
 
+// Define a proper return type for system health
+interface SystemHealthResponse {
+  status?: string;
+  success?: boolean;
+  health_report?: {
+    timestamp?: string;
+    connection?: {
+      is_connected?: boolean;
+      network?: string;
+      account?: string | undefined;
+      balance?: number;
+    };
+    transactions?: {
+      sent?: number;
+      successful?: number;
+      failed?: number;
+      success_rate?: string;
+      total_gas_used?: number;
+      avg_gas_used?: number;
+      total_cost?: string;
+    };
+    counters_reset?: boolean;
+  };
+  result?: any;
+  error?: string;
+}
+
 class BerrySupplyChainClient {
   // General methods
   async getServerStatus(): Promise<{
@@ -405,7 +432,9 @@ class BerrySupplyChainClient {
     return result;
   }
 
-  async getSystemHealth(resetCounters: boolean = false): Promise<any> {
+  async getSystemHealth(
+    resetCounters: boolean = false
+  ): Promise<SystemHealthResponse> {
     try {
       console.log("Calling sonic.system-health-check with params:", {
         reset_counters: resetCounters,
@@ -422,82 +451,94 @@ class BerrySupplyChainClient {
       // Log the raw response for debugging
       console.log("Raw system health check response:", response);
 
-      // Normalize the response format for better consistency
-      let normalizedResponse: {
-        status: string;
-        health_report?: any;
-        result?: any;
-        error?: string;
-      } = {
-        status: "success",
+      // Check if we already have the expected format
+      if (response.success && response.health_report) {
+        // Already in the expected format, return as is
+        return response;
+      }
+
+      // Otherwise, try to normalize the response
+      const normalizedResponse: SystemHealthResponse = {
+        success: true,
       };
 
-      // Handle different response formats
+      // Check if response comes with a nested health_report
       if (response.health_report) {
-        // Response already has health_report at top level
-        normalizedResponse = {
-          ...normalizedResponse,
-          health_report: response.health_report,
-        };
-      } else if (response.result?.health_report) {
-        // Response has health_report in result object
-        normalizedResponse = {
-          ...normalizedResponse,
-          health_report: response.result.health_report,
-        };
-      } else if (response.result?.report?.health_metrics) {
-        // Response has health metrics in nested report object
-        normalizedResponse = {
-          ...normalizedResponse,
-          health_report: response.result.report.health_metrics,
-        };
-      } else if (typeof response === "object") {
-        // Try to identify if the response itself contains health metrics
-        const metricsFields = [
-          "is_connected",
-          "contract_accessible",
-          "account_balance",
-          "transaction_count",
-          "successful_transactions",
-          "failed_transactions",
-        ];
-
-        // Check if response or response.result has metric fields directly
-        const sourceObj = metricsFields.some(
-          (field) => response[field] !== undefined
-        )
-          ? response
-          : metricsFields.some(
-              (field) => response.result?.[field] !== undefined
-            )
-          ? response.result
-          : null;
-
-        if (sourceObj) {
-          // Create health_report from the source object
-          normalizedResponse = {
-            ...normalizedResponse,
-            health_report: { ...sourceObj },
-          };
-        } else {
-          // If we can't identify health metrics, pass through the original response
-          normalizedResponse = {
-            ...normalizedResponse,
-            result: response,
-            error: "Could not extract health metrics from response",
-          };
-        }
+        normalizedResponse.health_report = response.health_report;
+        return normalizedResponse;
       }
+
+      // Check if response comes from the Python backend (different format)
+      if (response.status === "completed" && response.result?.health_report) {
+        normalizedResponse.health_report = response.result.health_report;
+        return normalizedResponse;
+      }
+
+      // Check if the response itself is the health report
+      if (
+        response.timestamp &&
+        (response.is_connected !== undefined ||
+          response.transaction_count !== undefined)
+      ) {
+        normalizedResponse.health_report = {
+          timestamp: response.timestamp,
+          connection: {
+            is_connected: response.is_connected,
+            account: response.account_balance ? "Connected Account" : undefined,
+            balance: parseFloat(response.account_balance) || 0,
+          },
+          transactions: {
+            sent: response.transaction_count || 0,
+            successful: response.successful_transactions || 0,
+            failed: response.failed_transactions || 0,
+            success_rate: response.transaction_success_rate || "0%",
+          },
+        };
+        return normalizedResponse;
+      }
+
+      // Handle the error case
+      if (response.error || response.status === "failed") {
+        return {
+          success: false,
+          error: response.error || "Unknown error during health check",
+        };
+      }
+
+      // If we reach here, we couldn't normalize the response
+      console.warn("Could not normalize health check response:", response);
+
+      // Return the raw response as the health_report as a last resort
+      normalizedResponse.health_report = {
+        timestamp: new Date().toISOString(),
+        connection: {
+          is_connected: false,
+          network: "unknown",
+          account: undefined,
+          balance: 0,
+        },
+        transactions: {
+          sent: 0,
+          successful: 0,
+          failed: 0,
+          success_rate: "0%",
+          total_gas_used: 0,
+          avg_gas_used: 0,
+          total_cost: "0.000000 Sonic Tokens",
+        },
+        counters_reset: resetCounters,
+      };
 
       return normalizedResponse;
     } catch (error) {
       console.error("Error in getSystemHealth:", error);
       return {
-        status: "error",
+        success: false,
         error: error instanceof Error ? error.message : String(error),
       };
     }
   }
+
   // Agent control methods
   async startAgent(): Promise<{ status: string; message: string }> {
     try {
