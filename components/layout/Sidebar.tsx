@@ -213,7 +213,7 @@ const Sidebar: React.FC = () => {
           ))}
         </nav>
 
-        <div className="px-3 mb-6">
+        <div className="px-3 mb-10">
           <div
             className={`p-4 rounded-lg bg-gray-800 ${
               collapsed ? "text-center" : ""
