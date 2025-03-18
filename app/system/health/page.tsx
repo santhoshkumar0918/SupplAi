@@ -27,7 +27,10 @@ export default function SystemHealthPage() {
   const client = new BerrySupplyChainClient();
 
   useEffect(() => {
+    // Initialize with a single data load
     const loadData = async () => {
+      if (isRefreshing) return; // Prevent concurrent fetches
+
       setIsRefreshing(true);
       try {
         // First check agent status
@@ -48,18 +51,24 @@ export default function SystemHealthPage() {
 
     loadData();
 
-    // Set up a refresh interval - but only if we're not already refreshing
+    // Set up a refresh interval - with safety check for isRefreshing
     const intervalId = setInterval(() => {
       if (!isRefreshing) {
-        fetchHealthMetrics().catch(console.error);
-        setLastRefreshTime(new Date());
+        loadData();
       }
-    }, 30000); // Refresh every 30 seconds
+    }, 60000); // Refresh every 60 seconds instead of 30 for less load
 
     return () => clearInterval(intervalId);
-  }, [fetchAgentStatus, fetchHealthMetrics, agentStatus.running]);
+  }, []); // Only run once on mount, don't include dependencies that change
+
+  // Update error message when error prop changes
+  useEffect(() => {
+    setErrorMessage(error);
+  }, [error]);
 
   const handleRefresh = async () => {
+    if (isRefreshing) return; // Prevent concurrent refreshes
+
     setIsRefreshing(true);
     try {
       await fetchAgentStatus();
@@ -73,6 +82,8 @@ export default function SystemHealthPage() {
   };
 
   const handleResetCounters = async () => {
+    if (isRefreshing) return; // Prevent concurrent actions
+
     setIsRefreshing(true);
     try {
       await fetchHealthMetrics(true);
@@ -85,6 +96,8 @@ export default function SystemHealthPage() {
   };
 
   const handleAgentControl = async () => {
+    if (isRefreshing) return; // Prevent concurrent actions
+
     setIsRefreshing(true);
     try {
       if (agentStatus.running) {
@@ -104,8 +117,8 @@ export default function SystemHealthPage() {
     setErrorMessage(error);
   };
 
-  // Show loading indicator when initial data is loading
-  if (loading && !healthMetrics && !error) {
+  // Show initial loading indicator
+  if (loading && !healthMetrics && !error && !isRefreshing) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
