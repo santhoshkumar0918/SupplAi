@@ -307,7 +307,7 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
               Connection Status
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-gray-900 text-gray-300">
+          <CardContent className="bg-gray-900 text-white">
             <table className="w-full">
               <tbody>
                 <tr className="border-b border-gray-300">
@@ -315,7 +315,7 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
                   <td className="py-3 text-right">
                     <span
                       className={`px-2 py-1 rounded-md text-white ${
-                        isConnected ? "bg-green-600" : "bg-red-600"
+                        isConnected ? "bg-green-500" : "bg-red-600"
                       }`}
                     >
                       {isConnected ? "Yes" : "No"}
@@ -327,7 +327,7 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
                   <td className="py-3 text-right">
                     <span
                       className={`px-2 py-1 rounded-md text-white ${
-                        isAccessible ? "bg-green-600" : "bg-red-600"
+                        isAccessible ? "bg-green-500" : "bg-red-600"
                       }`}
                     >
                       {isAccessible ? "Yes" : "No"}
@@ -336,13 +336,13 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
                 </tr>
                 <tr className="border-b border-gray-300">
                   <td className="py-3">Account Balance:</td>
-                  <td className="py-3 text-right font-mono text-blue-400">
+                  <td className="py-3 text-right font-mono text-blue-500">
                     {formatValue(metrics.account_balance, "Unknown")}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-3">Last Updated:</td>
-                  <td className="py-3 text-right text-gray-400">
+                  <td className="py-3 text-right text-white">
                     {metrics.timestamp
                       ? new Date(metrics.timestamp).toLocaleString()
                       : "-"}
@@ -363,7 +363,7 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
               Transaction Metrics
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-gray-900 text-gray-300">
+          <CardContent className="bg-gray-900 text-white">
             <table className="w-full">
               <tbody>
                 <tr className="border-b border-gray-300">
@@ -374,19 +374,19 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
                 </tr>
                 <tr className="border-b border-gray-300">
                   <td className="py-3">Successful:</td>
-                  <td className="py-3 text-right text-green-400">
+                  <td className="py-3 text-right text-green-500">
                     +{formatValue(metrics.successful_transactions, "0")}
                   </td>
                 </tr>
                 <tr className="border-b border-gray-300">
                   <td className="py-3">Failed:</td>
-                  <td className="py-3 text-right text-red-400">
+                  <td className="py-3 text-right text-red-600">
                     -{formatValue(metrics.failed_transactions, "0")}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-3">Success Rate:</td>
-                  <td className="py-3 text-right text-blue-400 font-medium">
+                  <td className="py-3 text-right text-blue-500 font-medium">
                     {formatValue(metrics.transaction_success_rate, "0%")}
                   </td>
                 </tr>
@@ -405,7 +405,7 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
               Temperature Monitor
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-gray-900 text-gray-300">
+          <CardContent className="bg-gray-900 text-white">
             <table className="w-full">
               <tbody>
                 <tr className="border-b border-gray-300">
@@ -416,13 +416,13 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
                 </tr>
                 <tr className="border-b border-gray-300">
                   <td className="py-3">Critical Breaches:</td>
-                  <td className="py-3 text-right text-red-400">
+                  <td className="py-3 text-right text-red-600">
                     {formatValue(metrics.critical_breaches, "0")}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-3">Warning Breaches:</td>
-                  <td className="py-3 text-right text-yellow-400">
+                  <td className="py-3 text-right text-yellow-600">
                     {formatValue(metrics.warning_breaches, "0")}
                   </td>
                 </tr>
@@ -441,7 +441,7 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
               AI Batch Processing
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-gray-900 text-gray-300">
+          <CardContent className="bg-gray-900 text-white">
             <table className="w-full">
               <tbody>
                 <tr className="border-b border-gray-300">
@@ -452,13 +452,13 @@ const HealthMetrics: React.FC<HealthMetricsProps> = ({
                 </tr>
                 <tr className="border-b border-gray-300">
                   <td className="py-3">Batches Completed:</td>
-                  <td className="py-3 text-right text-green-400">
+                  <td className="py-3 text-right text-green-500">
                     {formatValue(metrics.batches_completed, "0")}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-3">Completion Rate:</td>
-                  <td className="py-3 text-right text-blue-400 font-medium">
+                  <td className="py-3 text-right text-blue-500 font-medium">
                     {metrics.batches_created && metrics.batches_created > 0
                       ? `${(
                           ((metrics.batches_completed || 0) /
