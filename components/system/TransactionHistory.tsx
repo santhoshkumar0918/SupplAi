@@ -225,7 +225,7 @@ interface Transaction {
 }
 
 interface TransactionHistoryProps {
-  client: any; // Your API client
+  client: any;  
   onError?: (error: string) => void;
 }
 
@@ -244,7 +244,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      // Call your API client method to fetch transactions
+      
       const response = await client.getTransactionHistory(page, pageSize);
 
       if (response.status === "success" && response.transactions) {
@@ -261,7 +261,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
         onError(
           err.message || "An error occurred while fetching transaction history"
         );
-      // Set empty transactions but don't break the UI
+       
       setTransactions([]);
     } finally {
       setLoading(false);
@@ -296,7 +296,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
           size="sm"
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page === 1 || loading}
-          className="border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"
+          className="border-gray-700 text-black hover:bg-gray-700 hover:text-white"
         >
           Previous
         </Button>
@@ -308,7 +308,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
           size="sm"
           onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
           disabled={page === totalPages || loading}
-          className="border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"
+          className="border-gray-700 text-black hover:bg-gray-700 hover:text-white"
         >
           Next
         </Button>
@@ -317,14 +317,14 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
   };
 
   return (
-    <div className="mt-8 bg-gray-900 p-6 rounded-xl shadow-lg text-gray-200">
-      <div className="flex items-center mb-4 border-b border-gray-700 pb-4">
+    <div className="mt-8 bg-gray-800 p-6 rounded-xl shadow-lg text-gray-200">
+      <div className="flex items-center mb-4 border-b border-gray-300 pb-4">
         <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse mr-3"></div>
         <h2 className="text-2xl font-bold text-white">AI Transaction Ledger</h2>
       </div>
       
-      <Card className="bg-gray-800 border-none shadow-md overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between bg-gray-800 border-b border-gray-700 pb-4">
+      <Card className="bg-gray-900 border-none shadow-md overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between bg-gray-900 border-b border-gray-300 pb-4">
           <CardTitle className="text-white flex items-center">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -340,14 +340,14 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
             {loading ? <span className="animate-spin mr-1">⟳</span> : "Refresh"}
           </Button>
         </CardHeader>
-        <CardContent className="bg-gray-800 text-gray-300 pt-4">
+        <CardContent className="bg-gray-900 text-gray-300 pt-4">
           {selectedTransaction ? (
             <div className="space-y-4">
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={handleCloseDetails}
-                className="border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"
+                className="border-gray-300 text-gray-300 hover:bg-gray-700 hover:text-white"
               >
                 Back to list
               </Button>
@@ -369,23 +369,23 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-b border-gray-700">
-                      <TableHead className="text-gray-400">Date</TableHead>
-                      <TableHead className="text-gray-400">Type</TableHead>
-                      <TableHead className="text-gray-400">Status</TableHead>
-                      <TableHead className="text-gray-400">Actions</TableHead>
+                    <TableRow className="border-b border-gray-300">
+                      <TableHead className="text-white">Date</TableHead>
+                      <TableHead className="text-white">Type</TableHead>
+                      <TableHead className="text-white">Status</TableHead>
+                      <TableHead className="text-white">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {transactions.map((transaction) => (
                       <TableRow 
                         key={transaction.id} 
-                        className="border-b border-gray-700 hover:bg-gray-700/50"
+                        className="border-b border-gray-300 hover:bg-gray-700/50"
                       >
                         <TableCell className="text-gray-300 font-mono text-sm">
                           {formatDate(transaction.timestamp)}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-white">
                           <div className="flex items-center">
                             {transaction.type.toLowerCase().includes('create') && (
                               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -414,7 +414,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
                           <Badge
                             className={
                               transaction.success
-                                ? "bg-green-900 text-green-300 border border-green-600"
+                                ? "bg-green-500 text-white border border-green-600"
                                 : "bg-red-900 text-red-300 border border-red-600"
                             }
                           >
