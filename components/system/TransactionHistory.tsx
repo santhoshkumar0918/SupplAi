@@ -426,7 +426,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleViewDetails(transaction)}
-                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30"
+                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-600"
                           >
                             View Details
                           </Button>
