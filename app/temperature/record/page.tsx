@@ -27,10 +27,10 @@ export default function RecordTemperaturePage() {
       </div>
 
       {batchId ? (
-        // If we have a batch ID, show the temperature form
+         
         <TemperatureForm />
       ) : (
-        // Otherwise, show a message guiding the user to select a batch
+         
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="text-center mb-6">
