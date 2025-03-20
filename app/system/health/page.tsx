@@ -362,7 +362,7 @@ export default function SystemHealthPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 bg-gray-900 text-gray-200 min-h-screen">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+      <div className="flex justify-between items-center mb-5 border-b border-gray-700 pb-4">
         <h1 className="text-3xl font-bold text-white flex items-center">
           <span className="mr-2">System Health</span>
           <span className="text-sm bg-blue-500 text-white px-2 py-1 rounded-md">AI Monitored</span>
@@ -415,7 +415,7 @@ export default function SystemHealthPage() {
       <Card className="mb-6 bg-gray-800 border-gray-700 overflow-hidden">
         <div className={`h-1 w-full ${agentStatus.running ? "bg-green-500" : "bg-red-500"}`}></div>
         <CardHeader className="border-b border-gray-700">
-          <CardTitle className="text-white">Agent Status</CardTitle>
+          <CardTitle className="text-white mb-5">Agent Status</CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
           <div className="flex items-center justify-between">
