@@ -256,20 +256,20 @@ export default function SystemHealthPage() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(error);
 
-  // Create an instance of the client for the TransactionHistory component
+  
   const client = new BerrySupplyChainClient();
 
   useEffect(() => {
-    // Initialize with a single data load
+    
     const loadData = async () => {
-      if (isRefreshing) return; // Prevent concurrent fetches
+      if (isRefreshing) return; 
 
       setIsRefreshing(true);
       try {
-        // First check agent status
+        
         await fetchAgentStatus();
 
-        // Then fetch health metrics if agent is running
+       
         if (agentStatus.running) {
           await fetchHealthMetrics();
         }
@@ -284,24 +284,23 @@ export default function SystemHealthPage() {
 
     loadData();
 
-    // Set up a refresh interval - with safety check for isRefreshing
+    
     const intervalId = setInterval(() => {
       if (!isRefreshing) {
         loadData();
       }
-    }, 60000); // Refresh every 60 seconds instead of 30 for less load
+    }, 60000); 
 
     return () => clearInterval(intervalId);
-  }, []); // Only run once on mount, don't include dependencies that change
+  }, []); 
 
-  // Update error message when error prop changes
+ 
   useEffect(() => {
     setErrorMessage(error);
   }, [error]);
 
   const handleRefresh = async () => {
-    if (isRefreshing) return; // Prevent concurrent refreshes
-
+    if (isRefreshing) return; 
     setIsRefreshing(true);
     try {
       await fetchAgentStatus();
@@ -315,7 +314,7 @@ export default function SystemHealthPage() {
   };
 
   const handleResetCounters = async () => {
-    if (isRefreshing) return; // Prevent concurrent actions
+    if (isRefreshing) return; 
 
     setIsRefreshing(true);
     try {
@@ -329,7 +328,7 @@ export default function SystemHealthPage() {
   };
 
   const handleAgentControl = async () => {
-    if (isRefreshing) return; // Prevent concurrent actions
+    if (isRefreshing) return; 
 
     setIsRefreshing(true);
     try {
@@ -350,7 +349,7 @@ export default function SystemHealthPage() {
     setErrorMessage(error);
   };
 
-  // Show initial loading indicator
+  
   if (loading && !healthMetrics && !error && !isRefreshing) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-gray-900">
@@ -412,7 +411,7 @@ export default function SystemHealthPage() {
         </div>
       )}
 
-      {/* Agent Status */}
+      
       <Card className="mb-6 bg-gray-800 border-gray-700 overflow-hidden">
         <div className={`h-1 w-full ${agentStatus.running ? "bg-green-500" : "bg-red-500"}`}></div>
         <CardHeader className="border-b border-gray-700">
@@ -456,7 +455,7 @@ export default function SystemHealthPage() {
         </CardContent>
       </Card>
 
-      {/* Health Metrics */}
+     
       <div className="mb-6">
         <div className="flex items-center mb-2">
           <div className="w-1 h-6 bg-blue-500 rounded-r mr-2"></div>
@@ -469,7 +468,7 @@ export default function SystemHealthPage() {
         />
       </div>
 
-      {/* Transaction History */}
+      
       <div className="mb-6">
         <div className="flex items-center mb-2">
           <div className="w-1 h-6 bg-blue-500 rounded-r mr-2"></div>
