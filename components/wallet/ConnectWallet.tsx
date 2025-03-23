@@ -20,17 +20,17 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-// Define Sonic Blaze Testnet constants
-const SONIC_BLAZE_CHAIN_ID = 57054;
+// Define EduChain Testnet constants
+const EDUCHAIN_CHAIN_ID = 656476;
 
 const CHAIN_NAMES: { [key: number]: string } = {
-  57054: "Sonic Blaze Testnet",
+  656476: "EduChain Testnet",
   1: "Ethereum Mainnet",
   11155111: "Sepolia Testnet",
 };
 
-// Function to add Sonic Blaze Testnet to MetaMask
-const addSonicBlazeTestnet = async () => {
+// Function to add EduChain Testnet to MetaMask
+const addEduChainTestnet = async () => {
   if (!window.ethereum) {
     console.error("MetaMask not detected");
     return false;
@@ -41,28 +41,28 @@ const addSonicBlazeTestnet = async () => {
       method: "wallet_addEthereumChain",
       params: [
         {
-          chainId: `0x${SONIC_BLAZE_CHAIN_ID.toString(16)}`, // Convert to hex
-          chainName: "Sonic Blaze Testnet",
+          chainId: `0x${EDUCHAIN_CHAIN_ID.toString(16)}`, // Convert to hex
+          chainName: "EduChain Testnet",
           nativeCurrency: {
-            name: "Sonic",
-            symbol: "S",
+            name: "EduChain",
+            symbol: "EDU",
             decimals: 18,
           },
-          rpcUrls: ["https://rpc.blaze.soniclabs.com"],
-          blockExplorerUrls: ["https://blaze.soniclabs.com"],
+          rpcUrls: ["https://rpc.open-campus-codex.gelato.digital"],
+          blockExplorerUrls: ["https://edu-chain-testnet.blockscout.com"],
         },
       ],
     });
-    console.log("Sonic Blaze Testnet added to MetaMask!");
+    console.log("EduChain Testnet added to MetaMask!");
     return true;
   } catch (error) {
-    console.error("Failed to add Sonic Blaze Testnet:", error);
+    console.error("Failed to add EduChain Testnet:", error);
     return false;
   }
 };
 
-// Function to switch to Sonic Blaze Testnet
-const switchToSonicBlazeTestnet = async () => {
+// Function to switch to EduChain Testnet
+const switchToEduChainTestnet = async () => {
   if (!window.ethereum) {
     console.error("MetaMask not detected");
     return false;
@@ -71,15 +71,15 @@ const switchToSonicBlazeTestnet = async () => {
   try {
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: `0x${SONIC_BLAZE_CHAIN_ID.toString(16)}` }],
+      params: [{ chainId: `0x${EDUCHAIN_CHAIN_ID.toString(16)}` }],
     });
     return true;
   } catch (error: any) {
     // This error code indicates that the chain has not been added to MetaMask
     if (error.code === 4902) {
-      return addSonicBlazeTestnet();
+      return addEduChainTestnet();
     }
-    console.error("Failed to switch to Sonic Blaze Testnet:", error);
+    console.error("Failed to switch to EduChain Testnet:", error);
     return false;
   }
 };
@@ -99,13 +99,13 @@ export default function ConnectWallet() {
 
   useEffect(() => {
     setMounted(true);
-    setIsCorrectNetwork(chainId === SONIC_BLAZE_CHAIN_ID);
+    setIsCorrectNetwork(chainId === EDUCHAIN_CHAIN_ID);
   }, [chainId]);
 
   const handleConnect = async () => {
     try {
       // First, try to add the network
-      await addSonicBlazeTestnet();
+      await addEduChainTestnet();
 
       // Then connect
       connect({
@@ -119,9 +119,9 @@ export default function ConnectWallet() {
   const handleSwitchNetwork = async () => {
     try {
       if (switchChain) {
-        await switchChain({ chainId: SONIC_BLAZE_CHAIN_ID });
+        await switchChain({ chainId: EDUCHAIN_CHAIN_ID });
       } else {
-        await switchToSonicBlazeTestnet();
+        await switchToEduChainTestnet();
       }
       setIsCorrectNetwork(true);
     } catch (error) {
@@ -143,7 +143,10 @@ export default function ConnectWallet() {
 
   const openExplorer = () => {
     if (address) {
-      window.open(`https://blaze.soniclabs.com/address/${address}`, "_blank");
+      window.open(
+        `https://edu-chain-testnet.blockscout.com/address/${address}`,
+        "_blank"
+      );
     }
   };
 
@@ -204,7 +207,9 @@ export default function ConnectWallet() {
                   </p>
                   <p className="text-sm text-gray-500">
                     {balance?.formatted
-                      ? `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}`
+                      ? `${parseFloat(balance.formatted).toFixed(4)} ${
+                          balance.symbol
+                        }`
                       : "Loading..."}
                   </p>
                 </div>
@@ -241,7 +246,7 @@ export default function ConnectWallet() {
                     className="flex items-center gap-1 text-yellow-600 hover:text-yellow-700 font-medium"
                   >
                     <AlertTriangle className="w-4 h-4" />
-                    Switch to Sonic Testnet
+                    Switch to EduChain Testnet
                   </button>
                 )}
               </div>
@@ -252,4 +257,3 @@ export default function ConnectWallet() {
     </div>
   );
 }
-

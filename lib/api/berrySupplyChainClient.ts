@@ -12,7 +12,7 @@ interface Batch {
   qualityScore?: number;
   shelfLifePrediction?: string;
   recommendations?: string[];
-  // Add other batch properties as needed
+  berryType?: string;
 }
 
 interface TemperatureReading {
@@ -33,29 +33,8 @@ interface QualityAssessment {
 
 interface SystemHealth {
   status: string;
-  agentStatus: string;
-  connectionStatus: Record<string, string>;
-  lastSyncTimestamp: string;
-  pendingTransactions: number;
-  systemLoad: number;
-}
-
-interface Transaction {
-  id: string;
-  transaction_hash: string;
-  transaction_url?: string;
-  timestamp: string;
-  type: string;
-  success: boolean;
-  gas_used?: number;
-  execution_time?: number;
-  error?: string;
-}
-
-// Define a proper return type for system health
-interface SystemHealthResponse {
-  status?: string;
-  success?: boolean;
+  agent: string | null;
+  agent_running: boolean;
   health_report?: {
     timestamp?: string;
     connection?: {
@@ -75,11 +54,77 @@ interface SystemHealthResponse {
     };
     counters_reset?: boolean;
   };
-  result?: any;
+}
+
+interface Transaction {
+  id: string;
+  transaction_hash: string;
+  transaction_url?: string;
+  timestamp: string;
+  type: string;
+  success: boolean;
+  gas_used?: number;
+  execution_time?: number;
   error?: string;
 }
 
 class BerrySupplyChainClient {
+  // Define the connection name as a class property to easily update it
+  private connectionName = "educhain";
+  private initialized = false;
+
+  // Initialize method to ensure agent is loaded and running
+  async initialize(): Promise<boolean> {
+    try {
+      // If already initialized, return true
+      if (this.initialized) {
+        return true;
+      }
+
+      // Check server status to see if an agent is loaded
+      const status = await this.getServerStatus();
+      if (status.agent) {
+        console.log(`Agent already loaded: ${status.agent}`);
+        this.initialized = true;
+        return true;
+      }
+
+      // Get list of available agents
+      const agentsResponse = await this.listAgents();
+      const agents = agentsResponse.agents || [];
+
+      if (agents.length === 0) {
+        console.error("No agents available on server");
+        return false;
+      }
+
+      // Try to load the BerryMonitorAgent or fall back to first available
+      const agentToLoad = agents.includes("BerryMonitorAgent")
+        ? "BerryMonitorAgent"
+        : agents[0];
+
+      // Load the agent
+      const loadResult = await this.loadAgent(agentToLoad);
+      if (loadResult.status !== "success") {
+        console.error(`Failed to load agent: ${JSON.stringify(loadResult)}`);
+        return false;
+      }
+
+      // Start the agent
+      const startResult = await this.startAgent();
+      if (startResult.status !== "success") {
+        console.error(`Failed to start agent: ${JSON.stringify(startResult)}`);
+        return false;
+      }
+
+      this.initialized = true;
+      return true;
+    } catch (error) {
+      console.error("Error during initialization:", error);
+      return false;
+    }
+  }
+
   // General methods
   async getServerStatus(): Promise<{
     status: string;
@@ -124,142 +169,6 @@ class BerrySupplyChainClient {
     return this.handleResponse(response);
   }
 
-  /**
-   * Get headers for API requests
-   */
-  getHeaders() {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    return headers;
-  }
-
-  // Fixed method for calling connection actions
-  async callConnectionAction(
-    connection: string,
-    action: string,
-    params: Record<string, any> = {}
-  ): Promise<any> {
-    try {
-      console.log(`Calling ${connection}.${action} with params:`, params);
-
-      const response = await fetch(endpoints.actionUrl, {
-        method: "POST",
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          connection,
-          action,
-          params,
-        }),
-      });
-
-      if (!response.ok) {
-        // Check if this is a "Connection not found" error
-        let errorMessage = "";
-        try {
-          const errorData = await response.json();
-          errorMessage =
-            errorData?.detail ||
-            `API request failed: ${response.status} ${response.statusText}`;
-        } catch (parseError) {
-          // If we can't parse the JSON response
-          errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-        }
-
-        if (
-          errorMessage.includes("Connection") &&
-          errorMessage.includes("not found")
-        ) {
-          try {
-            // Try listing available connections for better error messages
-            const connections = await this.listConnections();
-            console.error(
-              `Connection '${connection}' not found. Available connections:`,
-              connections.connections
-                ? Object.keys(connections.connections)
-                : "None"
-            );
-          } catch (connError) {
-            console.error("Could not fetch connections list:", connError);
-          }
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const responseData = await response.json();
-
-      // Normalize response format
-      if (responseData.result) {
-        // Add success flag if needed
-        if (
-          typeof responseData.result === "object" &&
-          !responseData.result.success
-        ) {
-          responseData.result.success = responseData.status === "success";
-        }
-        return responseData.result;
-      }
-
-      return responseData;
-    } catch (error) {
-      console.error(`Error calling ${connection}.${action}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  // Call registered action method
-  async perform_registered_action(
-    action: string,
-    params: Record<string, any> = {}
-  ): Promise<any> {
-    try {
-      console.log(`Calling registered action ${action} with params:`, params);
-
-      const response = await fetch(endpoints.registeredActionUrl, {
-        method: "POST",
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          connection: "registered", // This value doesn't matter for registered actions
-          action,
-          params,
-        }),
-      });
-
-      if (!response.ok) {
-        let errorMessage = "";
-        try {
-          const errorData = await response.json();
-          errorMessage =
-            errorData?.detail ||
-            `API request failed: ${response.status} ${response.statusText}`;
-        } catch (parseError) {
-          errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const responseData = await response.json();
-
-      // Handle different response formats
-      if (responseData.result) {
-        return responseData.result;
-      }
-
-      return responseData;
-    } catch (error) {
-      console.error(`Error calling registered action ${action}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
   // Berry temperature monitoring methods
   async monitorTemperature(
     batchId: string,
@@ -267,7 +176,7 @@ class BerrySupplyChainClient {
     location: string
   ): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "monitor-berry-temperature",
       {
         batch_id: parseInt(batchId),
@@ -276,58 +185,42 @@ class BerrySupplyChainClient {
       }
     );
 
-    // Ensure the response has success field
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   async manageBerryQuality(batchId: string): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "manage-berry-quality",
       {
         batch_id: parseInt(batchId),
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   async processRecommendations(batchId: string): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "process-agent-recommendations",
       {
         batch_id: parseInt(batchId),
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   // Batch management methods
   async createBatch(berryType: string): Promise<any> {
+    // Ensure we're initialized before making the request
+    if (!this.initialized && !(await this.initialize())) {
+      throw new Error("Failed to initialize client");
+    }
+
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "manage-batch-lifecycle",
       {
         action: "create",
@@ -335,19 +228,12 @@ class BerrySupplyChainClient {
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   async getBatchStatus(batchId: string): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "manage-batch-lifecycle",
       {
         action: "status",
@@ -355,19 +241,12 @@ class BerrySupplyChainClient {
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   async getBatchReport(batchId: string): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "manage-batch-lifecycle",
       {
         action: "report",
@@ -375,19 +254,12 @@ class BerrySupplyChainClient {
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   async completeBatch(batchId: string): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "manage-batch-lifecycle",
       {
         action: "complete",
@@ -395,14 +267,7 @@ class BerrySupplyChainClient {
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "redirected") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
   async manageBatchSequence(
@@ -412,7 +277,7 @@ class BerrySupplyChainClient {
     completeShipment: boolean
   ): Promise<any> {
     const result = await this.callConnectionAction(
-      "sonic",
+      this.connectionName,
       "manage-batch-sequence",
       {
         berry_type: berryType,
@@ -422,196 +287,23 @@ class BerrySupplyChainClient {
       }
     );
 
-    // Normalize response format
-    if (result && typeof result === "object" && !result.success) {
-      if (result.status === "completed" || result.status === "success") {
-        result.success = true;
-      }
-    }
-
-    return result;
+    return this.normalizeResult(result);
   }
 
-  async getSystemHealth(
-    resetCounters: boolean = false
-  ): Promise<SystemHealthResponse> {
-    try {
-      console.log("Calling sonic.system-health-check with params:", {
+  // System health and monitoring
+  async getSystemHealth(resetCounters: boolean = false): Promise<SystemHealth> {
+    const result = await this.callConnectionAction(
+      this.connectionName,
+      "system-health-check",
+      {
         reset_counters: resetCounters,
-      });
-
-      const response = await this.callConnectionAction(
-        "sonic",
-        "system-health-check",
-        {
-          reset_counters: resetCounters,
-        }
-      );
-
-      // Log the raw response for debugging
-      console.log("Raw system health check response:", response);
-
-      // Check if we already have the expected format
-      if (response.success && response.health_report) {
-        // Already in the expected format, return as is
-        return response;
       }
+    );
 
-      // Otherwise, try to normalize the response
-      const normalizedResponse: SystemHealthResponse = {
-        success: true,
-      };
-
-      // Check if response comes with a nested health_report
-      if (response.health_report) {
-        normalizedResponse.health_report = response.health_report;
-        return normalizedResponse;
-      }
-
-      // Check if response comes from the Python backend (different format)
-      if (response.status === "completed" && response.result?.health_report) {
-        normalizedResponse.health_report = response.result.health_report;
-        return normalizedResponse;
-      }
-
-      // Check if the response itself is the health report
-      if (
-        response.timestamp &&
-        (response.is_connected !== undefined ||
-          response.transaction_count !== undefined)
-      ) {
-        normalizedResponse.health_report = {
-          timestamp: response.timestamp,
-          connection: {
-            is_connected: response.is_connected,
-            account: response.account_balance ? "Connected Account" : undefined,
-            balance: parseFloat(response.account_balance) || 0,
-          },
-          transactions: {
-            sent: response.transaction_count || 0,
-            successful: response.successful_transactions || 0,
-            failed: response.failed_transactions || 0,
-            success_rate: response.transaction_success_rate || "0%",
-          },
-        };
-        return normalizedResponse;
-      }
-
-      // Handle the error case
-      if (response.error || response.status === "failed") {
-        return {
-          success: false,
-          error: response.error || "Unknown error during health check",
-        };
-      }
-
-      // If we reach here, we couldn't normalize the response
-      console.warn("Could not normalize health check response:", response);
-
-      // Return the raw response as the health_report as a last resort
-      normalizedResponse.health_report = {
-        timestamp: new Date().toISOString(),
-        connection: {
-          is_connected: false,
-          network: "unknown",
-          account: undefined,
-          balance: 0,
-        },
-        transactions: {
-          sent: 0,
-          successful: 0,
-          failed: 0,
-          success_rate: "0%",
-          total_gas_used: 0,
-          avg_gas_used: 0,
-          total_cost: "0.000000 Sonic Tokens",
-        },
-        counters_reset: resetCounters,
-      };
-
-      return normalizedResponse;
-    } catch (error) {
-      console.error("Error in getSystemHealth:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    return this.normalizeResult(result);
   }
 
-  // Agent control methods
-  async startAgent(): Promise<{ status: string; message: string }> {
-    try {
-      const response = await fetch(endpoints.startAgentUrl, {
-        method: "POST",
-      });
-      return this.handleResponse(response);
-    } catch (error: any) {
-      // If agent is already running, consider it a success
-      if (error.message && error.message.includes("Agent already running")) {
-        return { status: "success", message: "Agent is already running" };
-      }
-      throw error;
-    }
-  }
-
-  async stopAgent(): Promise<{ status: string; message: string }> {
-    const response = await fetch(endpoints.stopAgentUrl, {
-      method: "POST",
-    });
-    return this.handleResponse(response);
-  }
-
-  // Helper methods
-  private async handleResponse(response: Response): Promise<any> {
-    if (!response.ok) {
-      let errorMessage = "";
-      try {
-        const errorData = await response.json();
-        errorMessage =
-          errorData?.detail ||
-          `API request failed: ${response.status} ${response.statusText}`;
-      } catch (parseError) {
-        errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-      }
-      throw new Error(errorMessage);
-    }
-    return response.json();
-  }
-
-  // Utility methods
-  async getAllBatches(): Promise<any[]> {
-    return this.callConnectionAction("sonic", "manage-batch-lifecycle", {
-      action: "list",
-    });
-  }
-
-  async getTemperatureHistory(batchId: string): Promise<any[]> {
-    const batchReport = await this.getBatchReport(batchId);
-
-    // Try different paths to find temperature history
-    let temperatureHistory = [];
-    if (batchReport?.report?.temperature_history) {
-      temperatureHistory = batchReport.report.temperature_history;
-    } else if (batchReport?.temperature_stats?.readings) {
-      temperatureHistory = batchReport.temperature_stats.readings;
-    } else if (batchReport?.report?.temperature_stats?.readings) {
-      temperatureHistory = batchReport.report.temperature_stats.readings;
-    }
-
-    return temperatureHistory || [];
-  }
-
-  async getQualityAssessment(batchId: string): Promise<any> {
-    return this.manageBerryQuality(batchId);
-  }
-
-  /**
-   * Fetch transaction history with pagination
-   * @param {number} page - The page number to fetch (starting from 1)
-   * @param {number} pageSize - Number of transactions per page
-   * @returns {Promise<{status: string, transactions?: Transaction[], total?: number, error?: string}>}
-   */
+  // Transaction history methods
   async getTransactionHistory(
     page: number = 1,
     pageSize: number = 10
@@ -622,7 +314,6 @@ class BerrySupplyChainClient {
     error?: string;
   }> {
     try {
-      // Use the registered action instead of connection action
       const result = await this.perform_registered_action(
         "get-transaction-history",
         {
@@ -631,11 +322,11 @@ class BerrySupplyChainClient {
         }
       );
 
+      // Log the raw response for debugging
       console.log("Transaction history result:", result);
 
-      // If backend implementation is not ready, fall back to mock data
+      // Normalize the response
       if (result.error || !result.transactions) {
-        console.warn("Transaction history API returned error, using mock data");
         return await this.getTransactionHistoryMock(page, pageSize);
       }
 
@@ -647,79 +338,16 @@ class BerrySupplyChainClient {
     } catch (error) {
       console.error("Error fetching transaction history:", error);
       // Fall back to mock data
-      console.warn("Falling back to mock transaction data");
       return await this.getTransactionHistoryMock(page, pageSize);
     }
   }
 
-  /**
-   * Mock implementation for transaction history
-   * @param {number} page - The page number to fetch (starting from 1)
-   * @param {number} pageSize - Number of transactions per page
-   * @returns {Promise<{status: string, transactions: Transaction[], total: number}>}
-   */
-  async getTransactionHistoryMock(
-    page: number = 1,
-    pageSize: number = 10
-  ): Promise<{
-    status: string;
-    transactions: Transaction[];
-    total: number;
-  }> {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Create mock transactions
-    const mockTransactions: Transaction[] = Array(20)
-      .fill(null)
-      .map((_, index) => ({
-        id: `tx-${index + 1}`,
-        transaction_hash: `0x${(index + 1).toString(16).padStart(64, "0")}`,
-        transaction_url: `https://etherscan.io/tx/0x${(index + 1)
-          .toString(16)
-          .padStart(64, "0")}`,
-        timestamp: new Date(Date.now() - index * 3600000).toISOString(),
-        type:
-          index % 3 === 0
-            ? "Batch Creation"
-            : index % 3 === 1
-            ? "Temperature Update"
-            : "Status Change",
-        success: index % 5 !== 0, // Make every 5th transaction a failure
-        gas_used: 75000 + Math.floor(Math.random() * 50000),
-        execution_time: 1 + Math.random() * 3,
-        ...(index % 5 === 0
-          ? { error: "Transaction reverted: gas limit exceeded" }
-          : {}),
-      }));
-
-    // Calculate total for pagination
-    const total = mockTransactions.length;
-
-    // Calculate start and end indices for the requested page
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = Math.min(startIndex + pageSize, total);
-
-    // Return mock response
-    return {
-      status: "success",
-      transactions: mockTransactions.slice(startIndex, endIndex),
-      total: total,
-    };
-  }
-
-  /**
-   * Get a single transaction by hash
-   * @param {string} txHash - Transaction hash
-   * @returns {Promise<{status: string, transaction?: Transaction, error?: string}>}
-   */
   async getTransaction(txHash: string): Promise<{
     status: string;
     transaction?: Transaction;
     error?: string;
   }> {
     try {
-      // Use the registered action instead of connection action
       const result = await this.perform_registered_action(
         "get-transaction-details",
         {
@@ -729,7 +357,6 @@ class BerrySupplyChainClient {
 
       // If backend implementation is not ready, fall back to mock
       if (result.error || !result.transaction) {
-        // Find the transaction in mock data
         const mockData = await this.getTransactionHistoryMock(1, 20);
         const transaction = mockData.transactions.find(
           (tx) => tx.transaction_hash === txHash
@@ -772,6 +399,433 @@ class BerrySupplyChainClient {
           error: error instanceof Error ? error.message : String(error),
         };
       }
+    }
+  }
+
+  // Agent control methods
+  async startAgent(): Promise<{ status: string; message: string }> {
+    const response = await fetch(endpoints.startAgentUrl, {
+      method: "POST",
+    });
+    return this.handleResponse(response);
+  }
+
+  async stopAgent(): Promise<{ status: string; message: string }> {
+    const response = await fetch(endpoints.stopAgentUrl, {
+      method: "POST",
+    });
+    return this.handleResponse(response);
+  }
+
+  // Helper methods for connection actions with retry and error handling
+  private async callConnectionAction(
+    connection: string,
+    action: string,
+    params: Record<string, any> = {},
+    retries: number = 3
+  ): Promise<any> {
+    let attempts = 0;
+
+    while (attempts < retries) {
+      try {
+        console.log(`Calling ${connection}.${action} with params:`, params);
+
+        const response = await fetch(endpoints.actionUrl, {
+          method: "POST",
+          headers: this.getHeaders(),
+          body: JSON.stringify({
+            connection,
+            action,
+            params,
+          }),
+        });
+
+        // Try to log the response for debugging
+        let responseData;
+        try {
+          responseData = await response.json();
+          console.log(`Response from ${connection}.${action}:`, responseData);
+        } catch (parseError) {
+          console.warn(
+            `Response is not JSON: ${(await response.text()).slice(0, 100)}...`
+          );
+          responseData = { raw_response: await response.text() };
+        }
+
+        if (!response.ok) {
+          let errorMessage =
+            responseData?.detail ||
+            `API request failed: ${response.status} ${response.statusText}`;
+
+          // Check if the error is due to no agent being loaded
+          if (
+            response.status === 400 &&
+            (errorMessage.includes("No agent loaded") ||
+              responseData?.detail?.includes("No agent loaded"))
+          ) {
+            console.log("No agent loaded. Attempting to initialize...");
+            this.initialized = false;
+            if (await this.initialize()) {
+              console.log("Successfully initialized. Retrying request...");
+              attempts++;
+              continue;
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        return responseData.result || responseData;
+      } catch (error) {
+        attempts++;
+        console.error(
+          `Error calling ${connection}.${action} (Attempt ${attempts}/${retries}):`,
+          error
+        );
+
+        if (attempts < retries) {
+          // Exponential backoff
+          const delay = Math.pow(2, attempts);
+          console.log(`Retrying in ${delay} seconds...`);
+          await new Promise((resolve) => setTimeout(resolve, delay * 1000));
+        } else {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+    }
+
+    // This should not be reached due to the return in the last catch block
+    return {
+      success: false,
+      error: `Failed after ${retries} attempts`,
+    };
+  }
+
+  private async perform_registered_action(
+    action: string,
+    params: Record<string, any> = {},
+    retries: number = 3
+  ): Promise<any> {
+    // Ensure we're initialized before making the request
+    if (!this.initialized && !(await this.initialize())) {
+      throw new Error("Failed to initialize client");
+    }
+
+    let attempts = 0;
+
+    while (attempts < retries) {
+      try {
+        console.log(`Calling registered action ${action} with params:`, params);
+
+        const response = await fetch(endpoints.registeredActionUrl, {
+          method: "POST",
+          headers: this.getHeaders(),
+          body: JSON.stringify({
+            connection: "registered",
+            action,
+            params,
+          }),
+        });
+
+        // Try to log the response for debugging
+        let responseData;
+        try {
+          responseData = await response.json();
+          console.log(`Response from registered.${action}:`, responseData);
+        } catch (parseError) {
+          console.warn(
+            `Response is not JSON: ${(await response.text()).slice(0, 100)}...`
+          );
+          responseData = { raw_response: await response.text() };
+        }
+
+        if (!response.ok) {
+          let errorMessage =
+            responseData?.detail ||
+            `API request failed: ${response.status} ${response.statusText}`;
+
+          // Check if the error is due to no agent being loaded
+          if (
+            response.status === 400 &&
+            (errorMessage.includes("No agent loaded") ||
+              responseData?.detail?.includes("No agent loaded"))
+          ) {
+            console.log("No agent loaded. Attempting to initialize...");
+            this.initialized = false;
+            if (await this.initialize()) {
+              console.log("Successfully initialized. Retrying request...");
+              attempts++;
+              continue;
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        return responseData.result || responseData;
+      } catch (error) {
+        attempts++;
+        console.error(
+          `Error calling registered action ${action} (Attempt ${attempts}/${retries}):`,
+          error
+        );
+
+        if (attempts < retries) {
+          // Exponential backoff
+          const delay = Math.pow(2, attempts);
+          console.log(`Retrying in ${delay} seconds...`);
+          await new Promise((resolve) => setTimeout(resolve, delay * 1000));
+        } else {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+    }
+
+    // This should not be reached due to the return in the last catch block
+    return {
+      success: false,
+      error: `Failed after ${retries} attempts`,
+    };
+  }
+
+  // Utility methods
+  private getHeaders() {
+    return {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+  }
+
+  private async handleResponse(response: Response): Promise<any> {
+    if (!response.ok) {
+      let errorMessage = "";
+      try {
+        const errorData = await response.json();
+        errorMessage =
+          errorData?.detail ||
+          `API request failed: ${response.status} ${response.statusText}`;
+      } catch (parseError) {
+        errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+    return response.json();
+  }
+
+  // Normalization method to ensure consistent response format
+  private normalizeResult(result: any): any {
+    // If result is already normalized, return as is
+    if (result && result.success !== undefined) {
+      return result;
+    }
+
+    // Handle different response formats
+    if (result && result.status === "completed") {
+      return {
+        success: true,
+        ...result.result,
+      };
+    }
+
+    // Default to a successful response with the original result
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
+  // Mock method for transaction history
+  private async getTransactionHistoryMock(
+    page: number = 1,
+    pageSize: number = 10
+  ): Promise<{
+    status: string;
+    transactions: Transaction[];
+    total: number;
+  }> {
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Create mock transactions
+    const mockTransactions: Transaction[] = Array(20)
+      .fill(null)
+      .map((_, index) => ({
+        id: `tx-${index + 1}`,
+        transaction_hash: `0x${(index + 1).toString(16).padStart(64, "0")}`,
+        transaction_url: `https://explorer.sonic.dev/tx/0x${(index + 1)
+          .toString(16)
+          .padStart(64, "0")}`,
+        timestamp: new Date(Date.now() - index * 3600000).toISOString(),
+        type:
+          index % 3 === 0
+            ? "Batch Creation"
+            : index % 3 === 1
+            ? "Temperature Update"
+            : "Status Change",
+        success: index % 5 !== 0, // Make every 5th transaction a failure
+        gas_used: 75000 + Math.floor(Math.random() * 50000),
+        execution_time: 1 + Math.random() * 3,
+        ...(index % 5 === 0
+          ? { error: "Transaction reverted: gas limit exceeded" }
+          : {}),
+      }));
+
+    // Calculate total for pagination
+    const total = mockTransactions.length;
+
+    // Calculate start and end indices for the requested page
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, total);
+
+    // Return mock response
+    return {
+      status: "success",
+      transactions: mockTransactions.slice(startIndex, endIndex),
+      total: total,
+    };
+  }
+
+  // Utility method to get temperature history for a batch
+  async getTemperatureHistory(batchId: string): Promise<TemperatureReading[]> {
+    try {
+      const batchReport = await this.getBatchReport(batchId);
+
+      // Try different paths to find temperature history
+      let temperatureHistory: any[] = [];
+      if (batchReport?.report?.temperature_history) {
+        temperatureHistory = batchReport.report.temperature_history;
+      } else if (batchReport?.temperature_stats?.readings) {
+        temperatureHistory = batchReport.temperature_stats.readings;
+      } else if (batchReport?.report?.temperature_stats?.readings) {
+        temperatureHistory = batchReport.report.temperature_stats.readings;
+      }
+
+      // Transform to TemperatureReading format
+      return temperatureHistory.map((reading) => {
+        // Handle different input formats
+        if (Array.isArray(reading)) {
+          // [timestamp, temperature, location, isBreached]
+          return {
+            batchId: batchId,
+            temperature: reading[1] / 10.0, // Assuming temperature is stored as integer * 10
+            timestamp: new Date(reading[0] * 1000).toISOString(), // Convert timestamp
+            location: reading[2] || "Unknown",
+            isBreached: reading[3] || false,
+          };
+        } else if (typeof reading === "object") {
+          // Handle object format
+          return {
+            batchId: batchId,
+            temperature: reading.temperature || reading.temp || 0,
+            timestamp: reading.timestamp || new Date().toISOString(),
+            location: reading.location || "Unknown",
+            isBreached: reading.isBreached || false,
+          };
+        }
+
+        // Fallback for unexpected format
+        return {
+          batchId: batchId,
+          temperature: 0,
+          timestamp: new Date().toISOString(),
+          location: "Unknown",
+          isBreached: false,
+        };
+      });
+    } catch (error) {
+      console.error(
+        `Failed to get temperature history for batch ${batchId}:`,
+        error
+      );
+      return []; // Return empty array on error
+    }
+  }
+
+  // Utility method to get quality assessment for a batch
+  async getQualityAssessment(batchId: string): Promise<QualityAssessment> {
+    try {
+      const qualityResult = await this.manageBerryQuality(batchId);
+
+      // Transform to QualityAssessment interface
+      return {
+        batchId: batchId,
+        qualityScore: qualityResult.quality_score || 0,
+        shelfLifePrediction: `${qualityResult.shelf_life_hours || 0} hours`,
+        recommendations: qualityResult.recommended_action
+          ? [qualityResult.recommended_action]
+          : [],
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error(
+        `Failed to get quality assessment for batch ${batchId}:`,
+        error
+      );
+      return {
+        batchId: batchId,
+        qualityScore: 0,
+        shelfLifePrediction: "Unknown",
+        recommendations: [],
+        lastUpdated: new Date().toISOString(),
+      };
+    }
+  }
+
+  // Utility method to get all batches
+  async getAllBatches(): Promise<Batch[]> {
+    try {
+      const result = await this.callConnectionAction(
+        this.connectionName,
+        "manage-batch-lifecycle",
+        {
+          action: "list",
+        }
+      );
+
+      // Transform batches to Batch interface
+      return (result || []).map((batch: any) => ({
+        id: batch.batchId?.toString() || "",
+        name: `${batch.berryType || "Unknown"} Batch`,
+        createdAt: batch.startTime
+          ? new Date(batch.startTime * 1000).toISOString()
+          : new Date().toISOString(),
+        status: this.mapBatchStatus(batch.status),
+        currentTemperature: batch.currentTemperature,
+        optimalTempMin: 0, // Default value, adjust as needed
+        optimalTempMax: 4, // Default value, adjust as needed
+        qualityScore: batch.qualityScore,
+        shelfLifePrediction: batch.predictedShelfLife
+          ? `${Math.round(batch.predictedShelfLife / 3600)} hours`
+          : "Unknown",
+        berryType: batch.berryType,
+      }));
+    } catch (error) {
+      console.error("Failed to get all batches:", error);
+      return [];
+    }
+  }
+
+  // Helper method to map batch status
+  private mapBatchStatus(status: number): string {
+    switch (status) {
+      case 0:
+        return "Pending";
+      case 1:
+        return "In Transit";
+      case 2:
+        return "Completed";
+      case 3:
+        return "Delayed";
+      case 4:
+        return "Cancelled";
+      default:
+        return "Unknown";
     }
   }
 }
