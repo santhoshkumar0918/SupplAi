@@ -4,45 +4,23 @@ import BatchCard from "./BatchCard";
 import { Button } from "../ui/button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2, RefreshCw } from "lucide-react";
-
-// Batch card skeleton for loading state
-const BatchCardSkeleton = () => (
-  <div className="p-4 border border-gray-200 rounded-lg animate-pulse bg-gray-50">
-    <div className="flex justify-between mb-4">
-      <div className="h-6 w-32 bg-gray-200 rounded"></div>
-      <div className="h-6 w-24 bg-gray-200 rounded"></div>
-    </div>
-    <div className="h-4 w-20 bg-gray-200 rounded mb-3"></div>
-    <div className="h-4 w-full bg-gray-200 rounded mb-3"></div>
-    <div className="flex justify-between">
-      <div className="h-6 w-32 bg-gray-200 rounded"></div>
-      <div className="h-8 w-28 bg-gray-200 rounded"></div>
-    </div>
-  </div>
-);
+import { Loader2, RefreshCw, Package, Plus } from "lucide-react";
 
 const BatchList: React.FC = () => {
   const { loading, error, batches, fetchBatches, clearCache } = useBatch();
   const [isFetching, setIsFetching] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const searchParams = useSearchParams();
   const actionParam = searchParams.get("action");
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-
-  // Show a hint message when directed here to record temperature
-  const [showRecordHint, setShowRecordHint] = useState(
-    actionParam === "recordTemp"
-  );
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   // Load batches with improved handling
   useEffect(() => {
     const loadBatches = async () => {
       setIsFetching(true);
       try {
-        console.log("Fetching batches...");
         await fetchBatches();
-        console.log("Batches fetched successfully");
       } catch (err) {
         console.error("Error fetching batches:", err);
       } finally {
@@ -54,19 +32,13 @@ const BatchList: React.FC = () => {
     loadBatches();
   }, [fetchBatches]);
 
-  // Memoize filtered batches to prevent unnecessary re-renders
+  // Efficiently filter batches with useMemo
   const filteredBatches = useMemo(() => {
     if (!batches || batches.length === 0) return [];
 
-    console.log(
-      `Filtering ${batches.length} batches with filter: ${statusFilter}`
-    );
-
-    if (statusFilter === "all") {
-      return batches;
-    } else {
-      return batches.filter((batch) => batch.batch_status === statusFilter);
-    }
+    return statusFilter === "all"
+      ? batches
+      : batches.filter((batch) => batch.batch_status === statusFilter);
   }, [batches, statusFilter]);
 
   // Set filter based on action parameter
@@ -78,58 +50,59 @@ const BatchList: React.FC = () => {
 
   const handleFilterChange = (status: string) => {
     setStatusFilter(status);
-    // Hide the hint when user changes the filter
-    setShowRecordHint(false);
   };
 
   const handleRefresh = async () => {
     setIsFetching(true);
-    // Clear cache to force a fresh fetch
     if (clearCache) clearCache();
     await fetchBatches();
     setIsFetching(false);
   };
 
-  // Get the count of active (in transit) batches
-  const activeBatchCount = useMemo(() => {
-    return batches.filter((batch) => batch.batch_status === "InTransit").length;
+  // Count batches by status
+  const countsByStatus = useMemo(() => {
+    if (!batches) return { inTransit: 0, delivered: 0 };
+
+    return {
+      inTransit: batches.filter((b) => b.batch_status === "InTransit").length,
+      delivered: batches.filter((b) => b.batch_status === "Delivered").length,
+    };
   }, [batches]);
 
   // Display correct loading state
   const isLoading = loading || isFetching;
 
-  // Show loading skeletons for initial load
+  // Show loading state
   if (isLoading && !initialLoadComplete) {
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-          <h2 className="text-2xl font-bold">Berry Batches</h2>
-          <div className="flex gap-2 items-center">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-500 mr-2" />
-            <span>Loading batches...</span>
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-white">Batches</h2>
+          <div className="flex gap-2 items-center text-white">
+            <Loader2 className="w-4 h-4 animate-spin text-white mr-1" />
+            <span className="text-sm">Loading...</span>
           </div>
         </div>
 
-        <div className="flex space-x-2 pb-4 overflow-x-auto">
-          <Button variant="default" size="sm" disabled>
-            All
-          </Button>
-          <Button variant="outline" size="sm" disabled>
-            In Transit
-          </Button>
-          <Button variant="outline" size="sm" disabled>
-            Delivered
-          </Button>
-          <Button variant="outline" size="sm" disabled>
-            Rejected
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <BatchCardSkeleton key={`skeleton-${index}`} />
-          ))}
-        </div>
+        {viewMode === "grid" ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-56 bg-gray-800/30 rounded-lg animate-pulse"
+              ></div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-16 bg-gray-700/30 rounded-md animate-pulse"
+              ></div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -137,151 +110,181 @@ const BatchList: React.FC = () => {
   // Show error state
   if (error && !isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Berry Batches</h2>
+          <h2 className="text-xl font-bold text-white">Batches</h2>
           <Button
             onClick={handleRefresh}
+            size="sm"
             variant="outline"
-            className="flex items-center gap-2"
+            className="bg-gray-700/50 border-gray-600"
           >
-            <RefreshCw className="w-4 h-4" />
-            Retry
+            <RefreshCw className="w-3 h-3 mr-1" /> Retry
           </Button>
         </div>
 
-        <div className="text-center py-10 border rounded-lg bg-red-50">
-          <p className="text-red-600 font-medium">Error loading batches</p>
-          <p className="text-red-500 mt-2">{error}</p>
+        <div className="p-4 bg-red-900/20 border border-red-700/30 rounded text-red-300 text-sm">
+          Could not load batches. Please try again.
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <h2 className="text-2xl font-bold">Berry Batches</h2>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-4">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center">
+            <Package className="h-5 w-5 mr-2 text-blue-500" />
+            Berry Batches
+            <span className="ml-2 text-sm font-normal text-gray-400">
+              ({batches.length} total)
+            </span>
+          </h2>
+
+          <div className="flex gap-4 mt-1 text-sm">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              <span className="text-gray-400">
+                {countsByStatus.inTransit} In Transit
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              <span className="text-gray-400">
+                {countsByStatus.delivered} Delivered
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div className="flex gap-2">
-          {isFetching && initialLoadComplete ? (
-            <Loader2 className="w-5 h-5 animate-spin text-blue-500 mr-2" />
-          ) : (
-            <Button variant="outline" size="icon" onClick={handleRefresh}>
-              <RefreshCw className="h-4 w-4" />
+          <Button
+            onClick={handleRefresh}
+            size="sm"
+            variant="outline"
+            className="bg-gray-700/50 border-gray-600 h-8 px-2"
+            disabled={isFetching}
+          >
+            {isFetching ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+          </Button>
+
+          <div className="flex gap-1 border-r border-gray-600 pr-2">
+            <Button
+              size="sm"
+              variant={viewMode === "grid" ? "default" : "outline"}
+              className="h-8 w-8 p-0"
+              onClick={() => setViewMode("grid")}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect width="7" height="7" x="3" y="3" rx="1" />
+                <rect width="7" height="7" x="14" y="3" rx="1" />
+                <rect width="7" height="7" x="14" y="14" rx="1" />
+                <rect width="7" height="7" x="3" y="14" rx="1" />
+              </svg>
             </Button>
-          )}
-          <Link href="/temperature/record" className="hidden md:block">
-            <Button variant="outline">Record Temperature</Button>
-          </Link>
+            <Button
+              size="sm"
+              variant={viewMode === "list" ? "default" : "outline"}
+              className="h-8 w-8 p-0"
+              onClick={() => setViewMode("list")}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="8" x2="21" y1="6" y2="6" />
+                <line x1="8" x2="21" y1="12" y2="12" />
+                <line x1="8" x2="21" y1="18" y2="18" />
+                <line x1="3" x2="3.01" y1="6" y2="6" />
+                <line x1="3" x2="3.01" y1="12" y2="12" />
+                <line x1="3" x2="3.01" y1="18" y2="18" />
+              </svg>
+            </Button>
+          </div>
+
           <Link href="/batches/create">
-            <Button>Create New Batch</Button>
+            <Button size="sm" className="h-8 px-3">
+              <Plus className="h-3 w-3 mr-1" /> New
+            </Button>
           </Link>
         </div>
       </div>
 
-      {showRecordHint && (
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-700">
-          <p className="font-medium mb-1">
-            Select a batch to record temperature
-          </p>
-          <p className="text-sm">
-            Click the "Record Temperature" button on any in-transit batch below.
-            Only in-transit batches can have temperature recordings.
-          </p>
-          {activeBatchCount === 0 && (
-            <p className="text-sm mt-2 font-medium">
-              No active batches found. Create a new batch first to record
-              temperature.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="flex space-x-2 pb-4 overflow-x-auto">
+      {/* Simple filter tabs */}
+      <div className="flex gap-2 border-b border-gray-700/50 pb-2">
         <Button
-          variant={statusFilter === "all" ? "default" : "outline"}
+          variant={statusFilter === "all" ? "default" : "ghost"}
           size="sm"
           onClick={() => handleFilterChange("all")}
+          className="h-7 px-3 text-xs"
         >
-          All {batches.length > 0 && `(${batches.length})`}
+          All
         </Button>
         <Button
-          variant={statusFilter === "InTransit" ? "default" : "outline"}
+          variant={statusFilter === "InTransit" ? "default" : "ghost"}
           size="sm"
           onClick={() => handleFilterChange("InTransit")}
+          className="h-7 px-3 text-xs"
         >
-          In Transit {activeBatchCount > 0 && `(${activeBatchCount})`}
+          In Transit
         </Button>
         <Button
-          variant={statusFilter === "Delivered" ? "default" : "outline"}
+          variant={statusFilter === "Delivered" ? "default" : "ghost"}
           size="sm"
           onClick={() => handleFilterChange("Delivered")}
+          className="h-7 px-3 text-xs"
         >
           Delivered
         </Button>
-        <Button
-          variant={statusFilter === "Rejected" ? "default" : "outline"}
-          size="sm"
-          onClick={() => handleFilterChange("Rejected")}
-        >
-          Rejected
-        </Button>
       </div>
 
+      {/* Batch cards - with view mode toggle */}
       {filteredBatches.length === 0 ? (
-        <div className="text-center py-10 border rounded-lg">
-          <p className="text-gray-500">No batches found</p>
-          {statusFilter !== "all" && (
-            <p className="text-sm text-gray-400 mt-2">
-              Try changing your filter or creating a new batch
-            </p>
-          )}
+        <div className="text-center py-6 bg-gray-800/30 border border-gray-700/50 rounded text-gray-400 text-sm">
+          No batches found. Create a new batch to get started.
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      ) : viewMode === "grid" ? (
+        // Grid view with square cards
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredBatches.map((batch, index) => {
-            // Ensure each batch has a unique key by using a fallback strategy
             const batchKey = batch.batch_id
               ? `batch-${batch.batch_id}`
               : `batch-index-${index}`;
-
-            return <BatchCard key={batchKey} batch={batch} />;
+            return <BatchCard key={batchKey} batch={batch} compact={false} />;
           })}
         </div>
-      )}
-
-      {/* Mobile-only record temperature button */}
-      <div className="fixed bottom-6 right-6 md:hidden">
-        <Link href="/temperature/record">
-          <Button className="rounded-full w-14 h-14 shadow-lg">
-            <span className="sr-only">Record Temperature</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path>
-              <path d="M12 15a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"></path>
-            </svg>
-          </Button>
-        </Link>
-      </div>
-
-      {/* Debug information (Remove in production) */}
-      {process.env.NODE_ENV !== "production" && (
-        <div className="text-xs text-gray-400 border-t pt-2 mt-6">
-          <p>
-            Debug: Found {batches.length} total batches,{" "}
-            {filteredBatches.length} after filtering
-          </p>
-          <p>Status filter: {statusFilter}</p>
-          <p>Loading state: {isLoading ? "Loading" : "Complete"}</p>
+      ) : (
+        // List view with compact cards
+        <div className="space-y-2">
+          {filteredBatches.map((batch, index) => {
+            const batchKey = batch.batch_id
+              ? `batch-${batch.batch_id}`
+              : `batch-index-${index}`;
+            return <BatchCard key={batchKey} batch={batch} compact={true} />;
+          })}
         </div>
       )}
     </div>
