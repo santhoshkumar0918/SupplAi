@@ -6,16 +6,6 @@
     "inputs": []
   },
   {
-    "type": "error",
-    "name": "OwnableInvalidOwner",
-    "inputs": [{ "type": "address", "name": "owner" }]
-  },
-  {
-    "type": "error",
-    "name": "OwnableUnauthorizedAccount",
-    "inputs": [{ "type": "address", "name": "account" }]
-  },
-  {
     "type": "event",
     "anonymous": false,
     "name": "AgentAlert",
@@ -51,6 +41,16 @@
       { "type": "uint256", "name": "batchId", "indexed": true },
       { "type": "uint256", "name": "newScore", "indexed": false },
       { "type": "uint256", "name": "predictedShelfLife", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "ShipmentCompleted",
+    "inputs": [
+      { "type": "uint256", "name": "batchId", "indexed": true },
+      { "type": "address", "name": "supplier", "indexed": true },
+      { "type": "uint256", "name": "timestamp", "indexed": false }
     ]
   },
   {
@@ -151,6 +151,14 @@
       { "type": "uint256", "name": "qualityScore" },
       { "type": "uint256", "name": "predictedShelfLife" }
     ]
+  },
+  {
+    "type": "function",
+    "name": "completeShipment",
+    "constant": false,
+    "payable": false,
+    "inputs": [{ "type": "uint256", "name": "batchId" }],
+    "outputs": []
   },
   {
     "type": "function",

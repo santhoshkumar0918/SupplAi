@@ -3,17 +3,10 @@
     "type": "constructor",
     "stateMutability": "undefined",
     "payable": false,
-    "inputs": [{ "type": "address", "name": "_berryAgent" }]
-  },
-  {
-    "type": "error",
-    "name": "OwnableInvalidOwner",
-    "inputs": [{ "type": "address", "name": "owner" }]
-  },
-  {
-    "type": "error",
-    "name": "OwnableUnauthorizedAccount",
-    "inputs": [{ "type": "address", "name": "account" }]
+    "inputs": [
+      { "type": "address", "name": "_berryAgent" },
+      { "type": "address", "name": "_roleManager" }
+    ]
   },
   {
     "type": "event",
@@ -40,6 +33,16 @@
     "inputs": [
       { "type": "address", "name": "supplier", "indexed": true },
       { "type": "uint256", "name": "newReputation", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "anonymous": false,
+    "name": "ShipmentCompleted",
+    "inputs": [
+      { "type": "uint256", "name": "batchId", "indexed": true },
+      { "type": "address", "name": "supplier", "indexed": true },
+      { "type": "uint256", "name": "timestamp", "indexed": false }
     ]
   },
   {
@@ -92,6 +95,23 @@
     "payable": false,
     "inputs": [],
     "outputs": [{ "type": "address", "name": "" }]
+  },
+  {
+    "type": "function",
+    "name": "completeShipment",
+    "constant": false,
+    "payable": false,
+    "inputs": [{ "type": "uint256", "name": "batchId" }],
+    "outputs": [{ "type": "bool", "name": "" }]
+  },
+  {
+    "type": "function",
+    "name": "completedShipments",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [{ "type": "uint256", "name": "" }],
+    "outputs": [{ "type": "bool", "name": "" }]
   },
   {
     "type": "function",
@@ -168,6 +188,15 @@
     "payable": false,
     "inputs": [],
     "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "roleManager",
+    "constant": true,
+    "stateMutability": "view",
+    "payable": false,
+    "inputs": [],
+    "outputs": [{ "type": "address", "name": "" }]
   },
   {
     "type": "function",
